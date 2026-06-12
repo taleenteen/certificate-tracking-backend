@@ -4,7 +4,7 @@ WORKDIR /usr/src/app
 
 FROM base AS development
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY . .
 RUN npx prisma generate
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -14,7 +14,7 @@ CMD ["npm", "run", "start:dev"]
 
 FROM base AS build
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY . .
 RUN npx prisma generate && npm run build && npm prune --omit=dev
 
