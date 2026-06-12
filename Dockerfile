@@ -7,6 +7,9 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npx prisma generate
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npm", "run", "start:dev"]
 
 FROM base AS build
@@ -25,4 +28,3 @@ COPY --from=build --chown=app:app /usr/src/app/prisma ./prisma
 USER app
 EXPOSE 3001
 CMD ["node", "dist/main.js"]
-
