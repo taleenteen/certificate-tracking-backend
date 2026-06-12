@@ -1,0 +1,30 @@
+# Minimal infra-only compose — just PostgreSQL + MinIO.
+# Use this when running the API directly on the host (recommended for local dev).
+# docker compose -f docker-compose.infra.yml up -d
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: elicense
+      POSTGRES_USER: elicense
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: elicense
+      MINIO_ROOT_PASSWORD: devpassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata: {}
+  miniodata: {}
