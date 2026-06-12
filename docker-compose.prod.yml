@@ -1,0 +1,13 @@
+services:
+  db:
+    ports: []
+
+  minio:
+    ports: []
+
+  api:
+    build:
+      context: .
+      target: production
+    volumes: []
+
