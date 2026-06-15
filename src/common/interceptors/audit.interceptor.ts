@@ -51,6 +51,10 @@ export class AuditInterceptor implements NestInterceptor {
             ? (response as Record<string, unknown>)
             : {};
         const route = request.path;
+        // Strip the global 'api' prefix so entityType is the resource segment
+        // (e.g. 'inspection-tasks'), not the constant prefix.
+        const segments = route.split('/').filter(Boolean);
+        const entitySegment = segments[0] === 'api' ? segments[1] : segments[0];
         const action = route.includes('approve')
           ? 'APPROVE'
           : route.includes('return')
@@ -66,7 +70,7 @@ export class AuditInterceptor implements NestInterceptor {
           data: {
             userId: request.user?.sub,
             action,
-            entityType: route.split('/').filter(Boolean)[0] ?? 'unknown',
+            entityType: entitySegment ?? 'unknown',
             entityId:
               typeof body.id === 'string'
                 ? body.id

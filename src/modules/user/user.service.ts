@@ -7,6 +7,11 @@ import { Agency, AuthProvider, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { JwtClaims, RequestScope } from '../../common/auth.types';
+import {
+  canGrantRole,
+  canManageUser,
+  isAdminTier,
+} from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto, UserQueryDto } from './user.dto';
 
@@ -17,7 +22,7 @@ export class UserService {
   list(query: UserQueryDto, actor: JwtClaims) {
     const where: Prisma.SystemUserWhereInput = {
       deletedAt: null,
-      agency: actor.roles.includes('admin') ? undefined : actor.agency!,
+      agency: isAdminTier(actor.roles) ? undefined : actor.agency!,
       roles: query.role ? { has: query.role } : undefined,
       isActive: query.status,
       userZones: query.zoneId ? { some: { zoneId: query.zoneId } } : undefined,
@@ -90,7 +95,24 @@ export class UserService {
     return { ...user, tempPassword };
   }
 
-  async updateRoles(id: string, roles: string[]) {
+  async updateRoles(id: string, roles: string[], actor: JwtClaims) {
+    const target = await this.prisma.systemUser.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!target) throw new NotFoundException();
+    // Cannot modify a user of equal or higher rank (super_admin excepted).
+    if (!canManageUser(actor.roles, target.roles)) {
+      throw new ForbiddenException(
+        'Cannot modify a user of equal or higher role',
+      );
+    }
+    // Every role being granted must be allowed for the actor: only super_admin
+    // may grant admin / super_admin; admin may grant roles below admin.
+    for (const role of roles) {
+      if (!canGrantRole(actor.roles, role)) {
+        throw new ForbiddenException(`Not allowed to grant role: ${role}`);
+      }
+    }
     return this.prisma.systemUser.update({
       where: { id },
       data: { roles },
@@ -110,7 +132,7 @@ export class UserService {
     });
     if (!target) throw new NotFoundException();
     if (
-      !actor.roles.includes('admin') &&
+      !isAdminTier(actor.roles) &&
       (target.agency !== actor.agency || agency !== actor.agency)
     ) {
       throw new ForbiddenException();
@@ -132,12 +154,12 @@ export class UserService {
       where: {
         id,
         deletedAt: null,
-        agency: actor.roles.includes('admin') ? undefined : actor.agency!,
+        agency: isAdminTier(actor.roles) ? undefined : actor.agency!,
       },
     });
     if (!target) throw new NotFoundException();
     if (
-      !actor.roles.includes('admin') &&
+      !isAdminTier(actor.roles) &&
       zoneIds.some((zoneId) => !scope?.zoneIds.includes(zoneId))
     ) {
       throw new ForbiddenException();
@@ -158,7 +180,22 @@ export class UserService {
     });
   }
 
-  async suspend(id: string) {
+  // Ensures the actor outranks the target (super_admin may manage anyone).
+  private async assertManageable(id: string, actor: JwtClaims) {
+    const target = await this.prisma.systemUser.findFirst({
+      where: { id, deletedAt: null },
+      select: { roles: true },
+    });
+    if (!target) throw new NotFoundException();
+    if (!canManageUser(actor.roles, target.roles)) {
+      throw new ForbiddenException(
+        'Cannot modify a user of equal or higher role',
+      );
+    }
+  }
+
+  async suspend(id: string, actor: JwtClaims) {
+    await this.assertManageable(id, actor);
     const [user] = await this.prisma.$transaction([
       this.prisma.systemUser.update({
         where: { id },
@@ -177,7 +214,8 @@ export class UserService {
     return user;
   }
 
-  async remove(id: string) {
+  async remove(id: string, actor: JwtClaims) {
+    await this.assertManageable(id, actor);
     const [user] = await this.prisma.$transaction([
       this.prisma.systemUser.update({
         where: { id },

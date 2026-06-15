@@ -4,7 +4,6 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
-  PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -28,55 +27,24 @@ export class StorageService implements OnModuleInit {
     await this.ensurePrivateBucket();
   }
 
-  // Creates the bucket if absent and enforces a deny-public-read policy so
-  // objects are only accessible via presigned URLs (10-min TTL via presign()).
+  // Creates the bucket if absent. MinIO (and S3) buckets are private by default:
+  // anonymous requests are denied, and the only read path is a presigned URL
+  // (signed with our credentials, 10-min TTL via presign()). We intentionally do
+  // NOT attach an anonymous-allow policy, so nothing is publicly readable. A
+  // blanket Deny policy is avoided because it would also reject our own
+  // presigned (authenticated) reads.
   private async ensurePrivateBucket() {
     try {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return;
     } catch {
-      try {
-        await this.client.send(
-          new CreateBucketCommand({ Bucket: this.bucket }),
-        );
-        this.logger.log(`Created MinIO bucket: ${this.bucket}`);
-      } catch (createErr) {
-        this.logger.error(`Failed to create bucket ${this.bucket}`, createErr);
-        return;
-      }
+      // Bucket missing — fall through to create it.
     }
-
-    // Deny all s3:GetObject requests that are not pre-signed (no signed query
-    // params means the request came directly without a presigned URL).
-    const denyPublicReadPolicy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Sid: 'DenyPublicRead',
-          Effect: 'Deny',
-          Principal: '*',
-          Action: 's3:GetObject',
-          Resource: `arn:aws:s3:::${this.bucket}/*`,
-          Condition: {
-            StringNotLike: {
-              'aws:signedHeaders': '*',
-            },
-          },
-        },
-      ],
-    });
-
     try {
-      await this.client.send(
-        new PutBucketPolicyCommand({
-          Bucket: this.bucket,
-          Policy: denyPublicReadPolicy,
-        }),
-      );
-      this.logger.log(`Applied private bucket policy to: ${this.bucket}`);
-    } catch (policyErr) {
-      this.logger.warn(
-        `Could not set bucket policy (non-fatal in dev): ${String(policyErr)}`,
-      );
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      this.logger.log(`Created private MinIO bucket: ${this.bucket}`);
+    } catch (createErr) {
+      this.logger.error(`Failed to create bucket ${this.bucket}`, createErr);
     }
   }
 

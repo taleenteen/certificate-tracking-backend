@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { JwtClaims } from '../../common/auth.types';
+import { isAdminTier } from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditQueryDto } from './audit.dto';
 
@@ -19,7 +20,14 @@ export class AuditService {
               lte: query.dateTo ? new Date(query.dateTo) : undefined,
             }
           : undefined,
-      user: user.roles.includes('admin') ? undefined : { agency: user.agency! },
+      // Admin sees all. Supervisor is scoped to their own agency AND zones:
+      // only audit rows produced by users sharing one of the supervisor's zones.
+      user: isAdminTier(user.roles)
+        ? undefined
+        : {
+            agency: user.agency!,
+            userZones: { some: { zoneId: { in: user.zoneIds } } },
+          },
     };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.auditLog.findMany({

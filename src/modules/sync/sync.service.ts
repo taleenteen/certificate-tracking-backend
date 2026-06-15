@@ -9,6 +9,7 @@ import {
 import { Agency, LicenseStatus, SyncStatus } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
 import { JwtClaims, RequestScope } from '../../common/auth.types';
+import { isAdminTier } from '../../common/auth.roles';
 import { GDX_PROVIDER } from '../external/external.module';
 import type { GdxProvider, GdxLicenseRecord } from '../external/gdx.provider';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -99,7 +100,7 @@ export class SyncService {
   }
 
   async trigger(agency: Agency, user: JwtClaims) {
-    if (!user.roles.includes('admin') && user.agency !== agency) {
+    if (!isAdminTier(user.roles) && user.agency !== agency) {
       throw new ForbiddenException();
     }
     if (agency !== Agency.ACFS) {
@@ -212,7 +213,7 @@ export class SyncService {
   status(user: JwtClaims, scope?: RequestScope | null) {
     return this.prisma.syncLog.findMany({
       where: {
-        agency: user.roles.includes('admin') ? undefined : scope?.agency,
+        agency: isAdminTier(user.roles) ? undefined : scope?.agency,
       },
       distinct: ['agency'],
       orderBy: [{ agency: 'asc' }, { startedAt: 'desc' }],

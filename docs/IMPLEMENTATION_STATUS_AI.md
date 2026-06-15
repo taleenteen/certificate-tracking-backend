@@ -2,13 +2,71 @@
 
 > Audience: AI coding agents continuing this repository.
 >
-> Last reviewed: 2026-06-12
+> Last reviewed: 2026-06-15
 >
 > Master contract: `docs/IMPLEMENTATION_GUIDE_1.md`
+> How to work here: `AGENTS.md` · Code style: `docs/CODING_STANDARDS.md`
+> Actionable backlog: `docs/FIX_PLAN.md`
 >
 > This document reports the current repository state. It does not replace or
 > override the master contract. When this document conflicts with the guide,
 > the guide wins.
+
+## 0. Change Log
+
+- **2026-06-15 (public self-registration + password login)** — Added public
+  sign-up: `POST /api/auth/register` (username/email/password → `public` role,
+  bcrypt cost 12, auto-login) and `POST /api/auth/login` (password login for
+  non-admin users) in `auth.service.ts`/`auth.controller.ts`; `RegisterDto`/
+  `LoginDto` in `auth.dto.ts`. **Extends D3**: the `public` role may now use
+  password auth alongside Tang Rat; admin tier is still rejected on `/auth/login`
+  (must use `/auth/self` with TOTP). Reuses lockout (5→15-min) and
+  first-login password-change challenge. Rate limited (register 5/min, login
+  10/min). Verified live end-to-end: register 201 + bcrypt `$2b$12$` hash in DB,
+  login 200, duplicate 409, bad password 401, admin blocked 401, weak password
+  400, register-issued token authorizes a protected route. Build/lint clean,
+  unit 16/16. New plain-English guide: `docs/AUTHENTICATION.md`.
+- **2026-06-15 (OpenAPI export file)** — Added `npm run swagger:export`
+  (`scripts/generate-openapi.ts`) that boots the app without an HTTP server and
+  writes `openapi.json` (OpenAPI 3.0, 45 paths) for import into Postman/Insomnia/
+  Kong/API Gateway. Refactored `src/swagger.ts` to export `buildSwaggerConfig()`.
+- **2026-06-15 (role hierarchy + super_admin)** — Owner-defined role model
+  replacing guide D1. Added a 5th role `super_admin` and made roles
+  **hierarchical** (`public < inspector < supervisor < admin < super_admin`) via
+  `src/common/auth.roles.ts` (`satisfiesRole`, `isAdminTier`, `canGrantRole`,
+  `canManageUser`). `RolesGuard` is now rank-based; `ScopeGuard`/`ClientTypeGuard`
+  and all services treat `super_admin` as admin tier. Scoped services
+  (inspection, supervisor dashboard) handle a null admin scope as "no filter" so
+  admins can view/approve across the board without crashing. User management
+  enforces caps: only super_admin grants/owns admin & super_admin; admins cannot
+  modify equal/higher users. Seed: `superadmin` → `super_admin`, added a plain
+  `admin` account. Verified live (promote caps, dashboard inheritance, mToken
+  block) + unit 16/16, e2e 8/8. Conventions in `docs/CODING_STANDARDS.md` §4b.
+- **2026-06-15 (Swagger / OpenAPI docs)** — Added interactive API docs at
+  `/docs` (`/docs-json`) via `@nestjs/swagger` 11 + its CLI plugin
+  (`nest-cli.json`, `introspectComments` + `classValidatorShim`). Setup in
+  `src/swagger.ts`; all 12 controllers tagged with `@ApiTags`/`@ApiBearerAuth`
+  and every endpoint annotated with `@ApiOperation` + response decorators;
+  request/query DTOs carry JSDoc + `@example`; typed auth response DTOs in
+  `auth.dto.ts`. Generated document: 45 paths / 48 operations / 20 schemas,
+  verified live. Conventions documented in `docs/CODING_STANDARDS.md` §10b.
+- **2026-06-15 (runtime verification + fixes)** — Brought up live Postgres+MinIO
+  and verified the whole stack end-to-end (migrate, seed with exact counts +
+  RNG4 invariant, both auth paths, scoped + public endpoints, dashboards, map).
+  `lint`/`build` clean, **unit 6/6, e2e 8/8**. Fixed and verified: build output
+  path (`nest build` was emitting `dist/src/main.js`, breaking `start:prod` and
+  the Docker prod image — now `dist/main.js`); e2e compile + a buggy zone-scope
+  test; audit `entityType` (was always `'api'`); forgot-password per-user 3/hour;
+  supervisor audit-log zone scope; MinIO private-bucket (malformed deny policy
+  removed — anonymous access now returns 403). Details in `docs/FIX_PLAN.md`.
+- **2026-06-15** — Migrated to **Prisma 7**: `url` removed from `schema.prisma`,
+  added `prisma.config.ts`, `PrismaService` + `prisma/seed.ts` switched to the
+  `@prisma/adapter-pg` driver adapter with `pg.Pool` (no more `$connect`/
+  `$disconnect`), `package.json` bumped to `^7`. Added `esModuleInterop: true`
+  and excluded `prisma.config.ts` in `tsconfig.json` to fix the `cookie-parser`
+  runtime crash. Added `AGENTS.md`, `docs/CODING_STANDARDS.md`, `docs/FIX_PLAN.md`.
+  **Side effect:** the e2e test files no longer compile under `esModuleInterop`
+  (supertest import) — see FIX_PLAN A1. The main app (`src/`) compiles clean.
 
 ## 1. Current Repository Shape
 
@@ -72,11 +130,11 @@ Infrastructure currently present:
 | MinIO Compose service            | `DONE`       | `docker-compose.yml`                                                                                       |
 | Exact 17-table Prisma data model | `DONE`       | `prisma/schema.prisma` validates successfully.                                                             |
 | Initial migration                | `DONE`       | `prisma/migrations/20260612000000_init/migration.sql`                                                      |
-| Mock seed                        | `PARTIAL`    | Required entity groups and edge cases are seeded, but counts and relationships need database verification. |
-| Run migration                    | `UNVERIFIED` | No PostgreSQL container was started during implementation.                                                 |
-| Run seed                         | `UNVERIFIED` | Seed compiles but was not executed against PostgreSQL.                                                     |
-| Verify with Prisma Studio        | `MISSING`    | Not performed.                                                                                             |
-| Clean-clone Compose startup      | `UNVERIFIED` | Compose requires `.env`; full runtime was not started.                                                     |
+| Mock seed                        | `DONE`       | Counts verified live 2026-06-15: 8 users / 6 zones / 20 businesses / 30 licenses (22/4/4) / 5 types / 10 tasks / 7 reports; 0 RNG4 with expire_date. |
+| Run migration                    | `DONE`       | `prisma migrate deploy` applied `20260612000000_init` against live Postgres 16. |
+| Run seed                         | `DONE`       | `ts-node prisma/seed.ts` executed successfully against Postgres.               |
+| Verify seed data                 | `DONE`       | Verified via direct SQL counts (Prisma Studio not needed).                     |
+| Clean-clone Compose startup      | `PARTIAL`    | Infra (`docker-compose.infra.yml`) + host API verified; full `docker compose` (API-in-container) not re-run this session. |
 
 Important seed notes:
 
@@ -131,7 +189,7 @@ Important seed notes:
 | Inspector dashboard                | `DONE`      | Counts and recent task query implemented.                                                                               |
 | Supervisor dashboard               | `PARTIAL`   | Prototype ratio implemented; output shape should be validated against frontend needs.                                   |
 | Admin dashboard                    | `DONE`      | User, zone, license, and sync summary implemented.                                                                      |
-| PDF/XLSX export                    | `DEVIATION` | Uses PDFKit/XLSX and streams directly. Guide requires Puppeteer HTML rendering, MinIO storage, and a presigned PDF URL. |
+| PDF/XLSX export                    | `ACCEPTED DEVIATION` | Uses PDFKit/XLSX and streams directly instead of Puppeteer→MinIO→presigned. Owner-approved 2026-06-15 (no headless-Chrome dependency; sufficient for prototype). |
 | Inspector/supervisor Next.js pages | `MISSING`   | No `app/` directory exists.                                                                                             |
 | Scope/conflict integration tests   | `MISSING`   | Required cross-zone and cross-agency tests are not present.                                                             |
 
@@ -148,7 +206,7 @@ Important seed notes:
 | DIW CSV import             | `PARTIAL`   | Validation and upsert exist; transactionality and malformed-date handling need tests.                |
 | Sync status                | `DONE`      | Latest per agency query implemented.                                                                 |
 | Audit log list             | `PARTIAL`   | Admin/all and supervisor agency filtering exist; zone-level supervisor filtering is not implemented. |
-| Audit export               | `DEVIATION` | Streams PDFKit/XLSX; does not use the guide's rendering/storage approach.                            |
+| Audit export               | `ACCEPTED DEVIATION` | Streams PDFKit/XLSX; owner-approved 2026-06-15 (see PDF/XLSX export row).            |
 | License expiry cron        | `DONE`      | 90/30-day notifications, expiration, and seven-day deduplication implemented.                        |
 | RNG4 fee cron              | `DONE`      | Uses the required `MOCK_OVERDUE` rule; never sets RNG4 to EXPIRED.                                   |
 | Session cleanup cron       | `DONE`      | Hourly cleanup implemented.                                                                          |
@@ -233,15 +291,19 @@ required Puppeteer/MinIO design.
 | D3 ADMIN namespace                                | `DONE`    | `ClientTypeGuard` enforces `web_admin`; documented DECISION comment.           |
 | Concurrency-safe task numbers                     | `DONE`    | `InspectionService.createTask` moves sequence inside tx + retries on P2002.    |
 
-Remaining security gaps (must be closed before phase sign-off):
+Security gaps — **all closed and verified 2026-06-15** (see `docs/FIX_PLAN.md`
+"Completed & verified"):
 
-1. Run `npm run test:e2e` against a seeded database to confirm all tests in
-   `test/security.e2e-spec.ts` pass green.
-2. Forgot-password rate limit is still IP-based, not per-user 3/hour as
-   required by guide §5.1.
-3. Supervisor audit filtering missing zone scope (guide §5.6).
-4. Provision and verify that MinIO bucket objects are not accessible without a
-   presigned URL (requires Docker running).
+1. ✅ e2e suite compiles and passes 8/8 against a seeded DB (was A1, B4).
+2. ✅ Audit `entityType` records the resource segment, not `'api'` (was B1).
+3. ✅ Forgot-password enforces per-user 3/hour (was B2).
+4. ✅ Supervisor audit-log listing is zone+agency scoped (was B3).
+5. ✅ MinIO bucket is private — anonymous access returns 403; presigned reads
+   work (was B5).
+
+Remaining (non-blocking) deviations tracked as FIX_PLAN C1–C4: export uses PDFKit
+(needs Puppeteer decision), evidence extension from filename not MIME, CSV-import
+transactionality, and the two-env-file footgun.
 
 ## 6. Performance Checklist Comparison
 
@@ -351,6 +413,9 @@ Continue in the master guide's implementation order.
 4. Run the complete security and performance checklists.
 
 ## 10. Rules for the Next AI Agent
+
+> Full operating manual: `AGENTS.md`. Code conventions: `docs/CODING_STANDARDS.md`.
+> Always update this document in the same change set as any code change.
 
 1. Read `docs/IMPLEMENTATION_GUIDE_1.md` before changing code.
 2. Treat the current backend as partial, not complete.

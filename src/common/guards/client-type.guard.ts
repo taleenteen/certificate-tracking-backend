@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ClientType } from '@prisma/client';
 import type { Request } from 'express';
+import { isAdminTier } from '../auth.roles';
 
 // DECISION (D3): The guide specifies that ADMIN JWTs must originate from the
 // web_admin client AND be scoped to the /api/admin-portal route namespace.
@@ -21,7 +22,7 @@ export class ClientTypeGuard implements CanActivate {
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request>();
     const user = request.user;
-    if (!user?.roles.includes('admin')) {
+    if (!user || !isAdminTier(user.roles)) {
       return true;
     }
     if (user.clientType !== ClientType.web_admin) {

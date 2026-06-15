@@ -10,9 +10,12 @@ import {
   SyncStatus,
   TaskStatus,
 } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 const adminPassword = 'ChangeMe-2026!';
 
 const addDays = (days: number) => {
@@ -134,7 +137,7 @@ async function main() {
         username: 'superadmin',
         passwordHash: await bcrypt.hash(adminPassword, 12),
         fullName: 'ผู้ดูแลระบบสูงสุด',
-        roles: ['admin'],
+        roles: ['super_admin'],
         totpSecret: 'JBSWY3DPEHPK3PXP',
         mustChangePassword: true,
       },
@@ -205,6 +208,19 @@ async function main() {
     acfsInspector2,
     publicOwner,
   ] = users;
+
+  // A plain ADMIN account (below super_admin) for testing the role hierarchy.
+  // Admins can assign supervisor/inspector roles but not create other admins.
+  await prisma.systemUser.create({
+    data: {
+      username: 'admin',
+      passwordHash: await bcrypt.hash(adminPassword, 12),
+      fullName: 'ผู้ดูแลระบบ',
+      roles: ['admin'],
+      totpSecret: 'JBSWY3DPEHPK3PXP',
+      mustChangePassword: false,
+    },
+  });
 
   await prisma.userZone.createMany({
     data: [
@@ -455,7 +471,10 @@ async function main() {
 
   console.log('MOCK seed complete');
   console.log(
-    `Admin: superadmin / ${adminPassword} / TOTP 000000 (development only)`,
+    `Super Admin: superadmin / ${adminPassword} / TOTP 000000 (development only)`,
+  );
+  console.log(
+    `Admin:       admin / ${adminPassword} / TOTP 000000 (development only)`,
   );
   console.log(
     'mTokens: mock-inspector-1, mock-inspector-3, mock-supervisor-diw, mock-supervisor-acfs, mock-public-owner',
@@ -467,4 +486,4 @@ main()
     console.error(error);
     process.exitCode = 1;
   })
-  .finally(async () => prisma.$disconnect());
+  .finally(async () => pool.end());

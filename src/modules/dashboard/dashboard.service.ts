@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TaskStatus } from '@prisma/client';
+import { Prisma, TaskStatus } from '@prisma/client';
 import { RequestScope } from '../../common/auth.types';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -42,14 +42,17 @@ export class DashboardService {
     };
   }
 
-  async supervisor(scope: RequestScope) {
-    const where = {
-      zoneId: { in: scope.zoneIds },
-      OR: [
-        { license: { licenseType: { agency: scope.agency } } },
-        { licenseId: null },
-      ],
-    };
+  async supervisor(scope: RequestScope | null) {
+    // Admin tier (scope === null) sees all zones/agencies; supervisors are scoped.
+    const where: Prisma.InspectionTaskWhereInput = scope
+      ? {
+          zoneId: { in: scope.zoneIds },
+          OR: [
+            { license: { licenseType: { agency: scope.agency } } },
+            { licenseId: null },
+          ],
+        }
+      : {};
     const [counts, zoneCounts] = await Promise.all([
       this.prisma.inspectionTask.groupBy({
         by: ['status'],

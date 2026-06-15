@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  HttpCode,
+  HttpStatus,
   Ip,
   Post,
   Req,
@@ -9,20 +11,34 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
+import {
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { SkipAudit } from '../../common/decorators/skip-audit.decorator';
 import { JwtClaims } from '../../common/auth.types';
 import {
+  AuthTokenResponseDto,
   ChangePasswordDto,
   ForgotPasswordDto,
+  LoginDto,
+  MessageResponseDto,
   RefreshDto,
+  RegisterDto,
   ResetPasswordDto,
   SelfLoginDto,
   TangRatLoginDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -54,6 +70,72 @@ export class AuthController {
 
   @Public()
   @SkipAudit()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Register a public account (email + password)',
+    description:
+      'Public self-signup. Creates a read-only `public` user with a ' +
+      'bcrypt-hashed password (cost 12) and immediately issues access + ' +
+      'refresh tokens (signup logs you in). Username must be unique. ' +
+      'Rate limited to 5/min/IP.',
+  })
+  @ApiCreatedResponse({
+    description: 'Account created; tokens issued.',
+    type: AuthTokenResponseDto,
+  })
+  @ApiConflictResponse({ description: 'Username is already taken.' })
+  @Post('register')
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.setRefreshCookie(
+      response,
+      await this.auth.register(dto, this.metadata(request)),
+    );
+  }
+
+  @Public()
+  @SkipAudit()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login with username + password (PUBLIC)',
+    description:
+      'Password login for self-registered public users. Admin accounts must ' +
+      'use `POST /auth/self` (password + TOTP). Account locks for 15 min ' +
+      'after 5 failures. Rate limited to 10/min/IP.',
+  })
+  @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid credentials.' })
+  @Post('login')
+  async login(
+    @Body() dto: LoginDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.setRefreshCookie(
+      response,
+      await this.auth.passwordLogin(
+        dto.username,
+        dto.password,
+        this.metadata(request),
+      ),
+    );
+  }
+
+  @Public()
+  @SkipAudit()
+  @ApiOperation({
+    summary: 'Login via ทางรัฐ mToken (PUBLIC / INSPECTOR / SUPERVISOR)',
+    description:
+      'Verifies the mToken with the Tang Rat provider, finds or creates the ' +
+      'user, and issues access + refresh tokens. Sets the refresh token as an ' +
+      'httpOnly cookie.',
+  })
+  @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid mToken or inactive user.' })
   @Post('tang-rat')
   async tangRat(
     @Body() dto: TangRatLoginDto,
@@ -69,6 +151,18 @@ export class AuthController {
   @Public()
   @SkipAudit()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Login with username + password + TOTP (ADMIN only)',
+    description:
+      'Admin self-login. On first login (mustChangePassword) returns a ' +
+      '`tempToken` and `requiresPasswordChange: true` instead of tokens. ' +
+      'Rate limited to 10/min/IP. Account locks for 15 min after 5 failures.',
+  })
+  @ApiOkResponse({
+    description: 'Tokens, or a password-change challenge on first login.',
+    type: AuthTokenResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Invalid credentials or TOTP.' })
   @Post('self')
   async self(
     @Body() dto: SelfLoginDto,
@@ -88,6 +182,18 @@ export class AuthController {
 
   @Public()
   @SkipAudit()
+  @ApiOperation({
+    summary: 'Rotate the refresh token',
+    description:
+      'Issues a new access + refresh token pair and revokes the old session ' +
+      '(rotation). Replaying an already-rotated token is treated as theft and ' +
+      'revokes all of the user’s sessions. Token may come from the body or ' +
+      'the `refreshToken` cookie.',
+  })
+  @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Missing, expired, or reused token.',
+  })
   @Post('refresh')
   async refresh(
     @Body() dto: RefreshDto,
@@ -107,11 +213,25 @@ export class AuthController {
   }
 
   @SkipAudit()
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Logout',
+    description: 'Revokes the current session (refresh token).',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
   @Post('logout')
   logout(@CurrentUser() user: JwtClaims, @Req() request: Request) {
     return this.auth.logout(user, this.metadata(request));
   }
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Change password',
+    description:
+      'Sets a new password and revokes all other sessions. Accepts either a ' +
+      'normal access token or the 5-min `tempToken` from first-login.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
   @Post('change-password')
   changePassword(
     @CurrentUser() user: JwtClaims,
@@ -123,6 +243,14 @@ export class AuthController {
   @Public()
   @SkipAudit()
   @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  @ApiOperation({
+    summary: 'Request a password reset link',
+    description:
+      'Creates a single-use 15-min reset token (logged to console in the ' +
+      'mock). Always returns success to avoid user enumeration. Limited to ' +
+      '3/hour per user.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
   @Post('forgot-password')
   forgot(@Body() dto: ForgotPasswordDto, @Ip() ipAddress: string) {
     return this.auth.forgotPassword(dto.username, ipAddress);
@@ -130,6 +258,11 @@ export class AuthController {
 
   @Public()
   @SkipAudit()
+  @ApiOperation({
+    summary: 'Reset password with a token',
+    description: 'Consumes the single-use token and sets the new password.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
   @Post('reset-password')
   reset(@Body() dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto.token, dto.newPassword);

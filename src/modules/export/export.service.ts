@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import * as XLSX from 'xlsx';
 import { JwtClaims, RequestScope } from '../../common/auth.types';
+import { isAdminTier } from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
 
 interface ExportFile {
@@ -80,7 +81,7 @@ export class ExportService {
     const report = await this.prisma.inspectionReport.findFirst({
       where: {
         id,
-        task: user.roles.includes('admin')
+        task: isAdminTier(user.roles)
           ? undefined
           : {
               zoneId: { in: scope?.zoneIds ?? [] },

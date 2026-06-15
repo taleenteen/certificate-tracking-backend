@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -13,6 +14,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { authenticator } from 'otplib';
 import { JwtClaims } from '../../common/auth.types';
+import { isAdminTier } from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TANG_RAT_PROVIDER } from '../external/external.module';
 import type { TangRatProvider } from '../external/tangrat.provider';
@@ -126,6 +128,143 @@ export class AuthService {
     });
   }
 
+  /**
+   * Public self-registration. Creates a read-only `public` account with a
+   * bcrypt-hashed password and immediately issues a session (signup logs you
+   * in). bcrypt cost 12 — the password is never stored or logged in clear text.
+   * Username uniqueness is enforced both by a pre-check (clean 409) and by the
+   * DB unique constraint (race-safe via the P2002 catch below).
+   */
+  async register(
+    dto: {
+      username: string;
+      email: string;
+      password: string;
+      fullName: string;
+      phone?: string;
+    },
+    metadata: RequestMetadata,
+  ) {
+    const existing = await this.prisma.systemUser.findUnique({
+      where: { username: dto.username },
+      select: { id: true },
+    });
+    if (existing) throw new ConflictException('Username is already taken');
+
+    // bcrypt automatically generates a per-password salt; cost 12 per §12.
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    let user: SystemUser;
+    try {
+      user = await this.prisma.systemUser.create({
+        data: {
+          username: dto.username,
+          email: dto.email,
+          fullName: dto.fullName,
+          phone: dto.phone,
+          passwordHash,
+          roles: ['public'],
+        },
+      });
+    } catch (error) {
+      // Two concurrent signups racing the same username land here.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Username is already taken');
+      }
+      throw error;
+    }
+
+    const result = await this.createSession(
+      user,
+      AuthProvider.self,
+      ClientType.app,
+      metadata,
+    );
+    await this.audit(user.id, 'REGISTER', metadata);
+    return result;
+  }
+
+  /**
+   * Password login for NON-admin self-registered users (the `public` app).
+   * Admin tier is rejected here and must use {@link selfLogin} (password +
+   * TOTP via the web portal, per decision D3). Mirrors selfLogin's lockout
+   * (5 failures → 15-min lock) and first-login password-change challenge.
+   */
+  async passwordLogin(
+    username: string,
+    password: string,
+    metadata: RequestMetadata,
+  ) {
+    const user = await this.prisma.systemUser.findUnique({
+      where: { username },
+    });
+    const invalid = () => new UnauthorizedException('Invalid credentials');
+    if (
+      !user ||
+      !user.passwordHash ||
+      !user.isActive ||
+      user.deletedAt ||
+      isAdminTier(user.roles)
+    ) {
+      // Admin tier must authenticate via /auth/self (web_admin + TOTP).
+      throw invalid();
+    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new HttpException('Account temporarily locked', HttpStatus.LOCKED);
+    }
+    const passwordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordValid) {
+      const attempts = user.failedLoginCount + 1;
+      await this.prisma.systemUser.update({
+        where: { id: user.id },
+        data: {
+          failedLoginCount: attempts,
+          lockedUntil:
+            attempts >= 5 ? new Date(Date.now() + 15 * 60_000) : null,
+        },
+      });
+      throw invalid();
+    }
+    await this.prisma.systemUser.update({
+      where: { id: user.id },
+      data: {
+        failedLoginCount: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+      },
+    });
+    if (user.mustChangePassword) {
+      // Staff seeded with a temp password must rotate it before getting tokens.
+      return {
+        requiresPasswordChange: true,
+        tempToken: await this.jwt.signAsync(
+          {
+            sub: user.id,
+            jti: randomUUID(),
+            roles: user.roles,
+            agency: null,
+            zoneIds: [],
+            authProvider: AuthProvider.self,
+            clientType: ClientType.app,
+            pwc: true,
+          } satisfies JwtClaims,
+          { algorithm: 'RS256', expiresIn: '5m' },
+        ),
+      };
+    }
+    const result = await this.createSession(
+      user,
+      AuthProvider.self,
+      ClientType.app,
+      metadata,
+    );
+    await this.audit(user.id, 'LOGIN', metadata);
+    return result;
+  }
+
   async tangRatLogin(mToken: string, metadata: RequestMetadata) {
     const identity = await this.tangRat.verify(mToken);
     let link = await this.prisma.authProviderLink.findUnique({
@@ -161,8 +300,9 @@ export class AuthService {
       !link.isActive ||
       !link.user.isActive ||
       link.user.deletedAt ||
-      link.user.roles.includes('admin')
+      isAdminTier(link.user.roles)
     ) {
+      // Admin tier (admin/super_admin) must use the web portal (self-login).
       throw new ForbiddenException();
     }
     await this.prisma.$transaction([
@@ -201,8 +341,9 @@ export class AuthService {
       !user.passwordHash ||
       !user.isActive ||
       user.deletedAt ||
-      !user.roles.includes('admin')
+      !isAdminTier(user.roles)
     ) {
+      // Only the admin tier (admin/super_admin) may self-login via the portal.
       throw invalid();
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) {
@@ -346,6 +487,13 @@ export class AuthService {
       where: { username },
     });
     if (!user?.passwordHash || user.deletedAt) return { success: true };
+    // Per-user limit: max 3 reset requests per hour (guide §5.1). Return the
+    // same generic response when exceeded so callers cannot enumerate users.
+    const oneHourAgo = new Date(Date.now() - 60 * 60_000);
+    const recentRequests = await this.prisma.passwordResetToken.count({
+      where: { userId: user.id, createdAt: { gte: oneHourAgo } },
+    });
+    if (recentRequests >= 3) return { success: true };
     const token = randomBytes(32).toString('hex');
     await this.prisma.passwordResetToken.create({
       data: {

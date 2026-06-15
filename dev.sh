@@ -10,8 +10,8 @@ echo "╚═══════════════════════�
 echo ""
 
 # ── 1. node_modules ──────────────────────────────────────────────────────────
-if [ ! -d "node_modules/@nestjs" ]; then
-  echo "▶ [1/5] Installing npm packages (runs once)..."
+if [ ! -d "node_modules/@nestjs" ] || [ ! -d "node_modules/@prisma/adapter-pg" ]; then
+  echo "▶ [1/5] Installing npm packages..."
 
   # Remove root-owned node_modules if that's what's blocking
   if [ -d "node_modules" ]; then
@@ -38,6 +38,12 @@ else
   echo "✓ [2/5] .env already exists."
 fi
 
+# Load .env into shell so DATABASE_URL is available for migrate/seed/ts-node
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
 # ── 3. Infra (PostgreSQL + MinIO) ─────────────────────────────────────────────
 echo "▶ [3/5] Starting PostgreSQL and MinIO..."
 docker compose -f docker-compose.infra.yml up -d
@@ -53,13 +59,9 @@ npx prisma migrate deploy
 echo "  ✓ Migrations applied."
 
 # ── 5. Seed (only if empty) ───────────────────────────────────────────────────
-SEED_COUNT=$(node -e "
-const { PrismaClient } = require('@prisma/client');
-const p = new PrismaClient();
-p.systemUser.count()
-  .then(n => { console.log(n); return p.\$disconnect(); })
-  .catch(() => { console.log('0'); process.exit(0); });
-" 2>/dev/null || echo "0")
+SEED_COUNT=$(docker compose -f docker-compose.infra.yml exec -T db \
+  psql -U elicense -d elicense -tAc 'SELECT COUNT(*) FROM "SystemUser"' 2>/dev/null \
+  | tr -d '[:space:]' || echo "0")
 
 if [ "$SEED_COUNT" = "0" ]; then
   echo "▶ [5/5] Seeding database..."

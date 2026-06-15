@@ -1,4 +1,5 @@
 {
+  "exclude": ["node_modules", "dist"],
   "compilerOptions": {
     "module": "commonjs",
     "declaration": true,
@@ -14,6 +15,7 @@
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false

@@ -1,0 +1,1683 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/auth/tang-rat": {
+      "post": {
+        "description": "Verifies the mToken with the Tang Rat provider, finds or creates the user, and issues access + refresh tokens. Sets the refresh token as an httpOnly cookie.",
+        "operationId": "AuthController_tangRat",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TangRatLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid mToken or inactive user."
+          }
+        },
+        "summary": "Login via ทางรัฐ mToken (PUBLIC / INSPECTOR / SUPERVISOR)",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/self": {
+      "post": {
+        "description": "Admin self-login. On first login (mustChangePassword) returns a `tempToken` and `requiresPasswordChange: true` instead of tokens. Rate limited to 10/min/IP. Account locks for 15 min after 5 failures.",
+        "operationId": "AuthController_self",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tokens, or a password-change challenge on first login.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials or TOTP."
+          }
+        },
+        "summary": "Login with username + password + TOTP (ADMIN only)",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "Issues a new access + refresh token pair and revokes the old session (rotation). Replaying an already-rotated token is treated as theft and revokes all of the user’s sessions. Token may come from the body or the `refreshToken` cookie.",
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired, or reused token."
+          }
+        },
+        "summary": "Rotate the refresh token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Revokes the current session (refresh token).",
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Logout",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "description": "Sets a new password and revokes all other sessions. Accepts either a normal access token or the 5-min `tempToken` from first-login.",
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Change password",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "description": "Creates a single-use 15-min reset token (logged to console in the mock). Always returns success to avoid user enumeration. Limited to 3/hour per user.",
+        "operationId": "AuthController_forgot",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Request a password reset link",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "description": "Consumes the single-use token and sets the new password.",
+        "operationId": "AuthController_reset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Reset password with a token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/license-types": {
+      "get": {
+        "description": "Returns all active license types across both agencies.",
+        "operationId": "LicenseController_listTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Array of license types."
+          }
+        },
+        "summary": "List license types (master data)",
+        "tags": [
+          "Licenses"
+        ]
+      }
+    },
+    "/api/licenses/{id}": {
+      "get": {
+        "description": "Public license detail including type, business, and documents with presigned URLs (10-min TTL).",
+        "operationId": "LicenseController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "License uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The license with related data."
+          },
+          "404": {
+            "description": "License not found."
+          }
+        },
+        "summary": "Get a license by id",
+        "tags": [
+          "Licenses"
+        ]
+      }
+    },
+    "/api/licenses/{id}/qr-verify": {
+      "get": {
+        "description": "Minimal license payload for QR scanning. Rate limited to 60/min/IP.",
+        "operationId": "LicenseController_verifyQr",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "License uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Minimal license verification payload."
+          },
+          "404": {
+            "description": "License not found."
+          }
+        },
+        "summary": "QR verification of a license",
+        "tags": [
+          "Licenses"
+        ]
+      }
+    },
+    "/api/businesses": {
+      "get": {
+        "description": "Paginated, case-insensitive search on Thai name with optional province filter. Returns `{ data, meta }`.",
+        "operationId": "BusinessController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Paginated business list."
+          }
+        },
+        "summary": "Search businesses",
+        "tags": [
+          "Businesses"
+        ]
+      }
+    },
+    "/api/businesses/map": {
+      "get": {
+        "description": "Returns a GeoJSON FeatureCollection (Point features) filtered by province / license type code / status. Rows without coordinates are excluded.",
+        "operationId": "BusinessController_map",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "GeoJSON FeatureCollection."
+          }
+        },
+        "summary": "Businesses as a GeoJSON map layer",
+        "tags": [
+          "Businesses"
+        ]
+      }
+    },
+    "/api/businesses/{id}": {
+      "get": {
+        "description": "Business detail including its active licenses.",
+        "operationId": "BusinessController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Business uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The business with active licenses."
+          },
+          "404": {
+            "description": "Business not found."
+          }
+        },
+        "summary": "Get a business by id",
+        "tags": [
+          "Businesses"
+        ]
+      }
+    },
+    "/api/my/licenses": {
+      "get": {
+        "description": "Returns the current user’s licenses. In `juristic` mode, a 404 with `{ found: false }` is returned when no juristic match exists.",
+        "operationId": "MyController_licenses",
+        "parameters": [
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "personal",
+              "type": "string",
+              "enum": [
+                "personal",
+                "juristic"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Licenses for the selected mode."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "My licenses",
+        "tags": [
+          "My"
+        ]
+      }
+    },
+    "/api/my/notifications": {
+      "get": {
+        "description": "Paginated, newest first. Returns `{ data, meta }`.",
+        "operationId": "NotificationController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Paginated notifications."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List my notifications",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/read-all": {
+      "patch": {
+        "description": "Marks every unread notification for the current user as read.",
+        "operationId": "NotificationController_readAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Count of updated notifications."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Mark all my notifications read",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "description": "Marks a single notification (owned by the user) as read.",
+        "operationId": "NotificationController_read",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Notification uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated notification."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Mark one notification read",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/inspection-tasks": {
+      "get": {
+        "description": "Inspector sees tasks assigned to them; supervisor sees tasks in their zones + agency. Optional `status` filter.",
+        "operationId": "InspectionController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Array of tasks with business/license/report."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List inspection tasks (scoped)",
+        "tags": [
+          "Inspection"
+        ]
+      },
+      "post": {
+        "description": "Assignee must hold the inspector role, share a zone with the business, and match the agency. Rejected (409) if the assignee owns the business (conflict of interest). Generates a sequential `T-YYYY-NNNN` number and notifies the assignee.",
+        "operationId": "InspectionController_createTask",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created task."
+          },
+          "403": {
+            "description": "Assignee does not cover the zone."
+          },
+          "404": {
+            "description": "Business or assignee not in scope."
+          },
+          "409": {
+            "description": "Assignee owns the business (conflict of interest)."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Create an inspection task (supervisor)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-tasks/{id}": {
+      "get": {
+        "description": "Includes business, zone, license, assignee, and the latest report. Returns 404 if outside the caller’s scope.",
+        "operationId": "InspectionController_findTask",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Task uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The task with related data."
+          },
+          "404": {
+            "description": "Not found or out of scope."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Get an inspection task (scoped)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-tasks/{id}/start": {
+      "patch": {
+        "description": "Transitions ASSIGNED → IN_PROGRESS, sets `startedAt`, and creates a draft report if none exists.",
+        "operationId": "InspectionController_startTask",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Task uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated task."
+          },
+          "422": {
+            "description": "Invalid state transition."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Start a task (assignee)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-tasks/{id}/cancel": {
+      "patch": {
+        "description": "Only from ASSIGNED or IN_PROGRESS. Requires a reason.",
+        "operationId": "InspectionController_cancelTask",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Task uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTaskDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The cancelled task."
+          },
+          "422": {
+            "description": "Invalid state transition."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Cancel a task (supervisor)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}": {
+      "put": {
+        "description": "Editable only while the report is a draft or the task is RETURNED.",
+        "operationId": "InspectionController_updateReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated report."
+          },
+          "422": {
+            "description": "Report is not editable."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Update a draft report (owner)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}/evidence": {
+      "post": {
+        "description": "Multipart upload. Max 10 MB; allowed types: image/jpeg, image/png, application/pdf. Stored privately in MinIO under the report.",
+        "operationId": "InspectionController_uploadEvidence",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created evidence document."
+          },
+          "422": {
+            "description": "Invalid file or report not editable."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Upload evidence file (owner)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}/evidence/{docId}": {
+      "delete": {
+        "description": "Allowed only while the report is a draft or RETURNED.",
+        "operationId": "InspectionController_deleteEvidence",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "required": true,
+            "in": "path",
+            "description": "Document uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion result."
+          },
+          "404": {
+            "description": "Document not found."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Delete an evidence file (owner)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}/submit": {
+      "patch": {
+        "description": "Requires a non-null result. Sets the report non-draft, transitions the task to PENDING_REVIEW, and notifies supervisors in the zone + agency.",
+        "operationId": "InspectionController_submitReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The submitted report."
+          },
+          "422": {
+            "description": "Result missing or invalid state transition."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Submit a report (owner)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}/approve": {
+      "patch": {
+        "description": "Transitions the task to APPROVED. Side effects: FAILED result suspends the license; a PASSED result reactivates a previously suspended one. Notifies the inspector.",
+        "operationId": "InspectionController_approveReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The approved report."
+          },
+          "404": {
+            "description": "Not found or out of scope."
+          },
+          "422": {
+            "description": "Invalid state transition."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Approve a report (supervisor)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}/return": {
+      "patch": {
+        "description": "Requires a review comment. Transitions the task to RETURNED and notifies the inspector.",
+        "operationId": "InspectionController_returnReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The returned report."
+          },
+          "404": {
+            "description": "Not found or out of scope."
+          },
+          "422": {
+            "description": "Invalid state transition."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Return a report for fixes (supervisor)",
+        "tags": [
+          "Inspection"
+        ]
+      }
+    },
+    "/api/dashboard/inspector": {
+      "get": {
+        "description": "Counts (pending, in-progress, returned, completed this month) and the 5 most recent tasks for the current inspector.",
+        "operationId": "DashboardController_inspector",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Inspector dashboard aggregates."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Inspector dashboard",
+        "tags": [
+          "Dashboards"
+        ]
+      }
+    },
+    "/api/dashboard/supervisor": {
+      "get": {
+        "description": "Zone summary, pending review count, task counts by status, and compliance rate — scoped to the supervisor’s zones + agency.",
+        "operationId": "DashboardController_supervisor",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Supervisor dashboard aggregates."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Supervisor dashboard",
+        "tags": [
+          "Dashboards"
+        ]
+      }
+    },
+    "/api/dashboard/admin": {
+      "get": {
+        "description": "System-wide counts: users by role, zones, licenses by status, and last sync per agency.",
+        "operationId": "DashboardController_admin",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Admin dashboard aggregates."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Admin dashboard",
+        "tags": [
+          "Dashboards"
+        ]
+      }
+    },
+    "/api/users": {
+      "get": {
+        "description": "Admin sees all users; supervisor sees only their own agency. Filter by role / zone / status / free-text query.",
+        "operationId": "UserController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Matching users."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List users",
+        "tags": [
+          "Users"
+        ]
+      },
+      "post": {
+        "description": "Creates a SUPERVISOR/INSPECTOR account. A temp password is generated for self-login users (mustChangePassword=true).",
+        "operationId": "UserController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created user (with temp password)."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Create a user (admin)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/{id}/roles": {
+      "patch": {
+        "description": "Replaces the user’s role set. Admin-only by locked decision.",
+        "operationId": "UserController_roles",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRolesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated user."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Set user roles (admin only — D1)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/{id}/agency": {
+      "patch": {
+        "description": "Admin: any user. Supervisor: only within their own agency (else 403).",
+        "operationId": "UserController_agency",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgencyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated user."
+          },
+          "403": {
+            "description": "Cross-agency change by a supervisor."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Set user agency",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/{id}/zones": {
+      "post": {
+        "description": "Replaces the user’s zone assignments. Supervisors may only assign their own zones.",
+        "operationId": "UserController_zones",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateZonesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The updated zone assignments."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Replace a user’s zones",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/{id}/suspend": {
+      "patch": {
+        "description": "Sets isActive=false and revokes all of the user’s sessions.",
+        "operationId": "UserController_suspend",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The suspended user."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Suspend a user (admin)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/{id}": {
+      "delete": {
+        "description": "Soft-deletes the user and revokes all sessions.",
+        "operationId": "UserController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion result."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Delete a user (admin)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/zones": {
+      "get": {
+        "description": "Admin sees all zones; supervisor sees their own zones.",
+        "operationId": "ZoneController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Zones."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List zones",
+        "tags": [
+          "Zones"
+        ]
+      },
+      "post": {
+        "description": "Creates a new zone with a GeoJSON boundary.",
+        "operationId": "ZoneController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateZoneDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created zone."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Create a zone (admin)",
+        "tags": [
+          "Zones"
+        ]
+      }
+    },
+    "/api/zones/{id}": {
+      "put": {
+        "description": "Updates zone fields (name, province, boundary, active flag).",
+        "operationId": "ZoneController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Zone uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateZoneDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated zone."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Update a zone (admin)",
+        "tags": [
+          "Zones"
+        ]
+      }
+    },
+    "/api/sync/trigger": {
+      "post": {
+        "description": "Runs the (mock) GDX fetch for the agency and upserts licenses by license number. Rate limited to 1 per 5 min per agency. Supervisors may only sync their own agency.",
+        "operationId": "SyncController_trigger",
+        "parameters": [
+          {
+            "name": "agency",
+            "required": true,
+            "in": "query",
+            "description": "Agency to sync.",
+            "schema": {
+              "enum": [
+                "DIW",
+                "ACFS"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The completed sync log."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Trigger an agency sync",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/sync/import/diw": {
+      "post": {
+        "description": "Multipart CSV upload with columns: `license_no,business_name,type_code,issue_date,status`. Validates and upserts; recorded via a CSV_IMPORT audit entry.",
+        "operationId": "SyncController_importDiw",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Import result summary."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Import DIW licenses from CSV (admin)",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/sync/status": {
+      "get": {
+        "description": "Returns the most recent sync log for each agency.",
+        "operationId": "SyncController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Latest sync logs."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Latest sync status per agency",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/audit-logs": {
+      "get": {
+        "description": "Admin sees all; supervisor is scoped to their agency + zones. Filter by user / entity type / date range. Returns `{ data, meta }`.",
+        "operationId": "AuditController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Paginated audit log entries."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List audit logs",
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/audit-logs/export": {
+      "get": {
+        "description": "Streams the audit log as a downloadable PDF or XLSX file.",
+        "operationId": "ExportController_audit",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "description": "File format.",
+            "schema": {
+              "enum": [
+                "pdf",
+                "xlsx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file attachment."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Export audit logs (admin)",
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/inspection-reports/{id}/export": {
+      "get": {
+        "description": "Streams a single inspection report as PDF or XLSX. Scoped to the caller (supervisor: zone + agency).",
+        "operationId": "ExportController_report",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Report uuid",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "description": "File format.",
+            "schema": {
+              "enum": [
+                "pdf",
+                "xlsx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file attachment."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Export an inspection report (supervisor/admin)",
+        "tags": [
+          "Export"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "E-License Verification Platform API",
+    "description": "REST API for the Thai e-licensing platform that plugs into the ทางรัฐ\n(Tang Rat) super app. Serves the public app and the admin portal.\n\n**Authentication.** Most endpoints require a Bearer access token\n(RS256 JWT, 15-min TTL). Obtain one from `POST /api/auth/tang-rat`\n(PUBLIC/INSPECTOR/SUPERVISOR) or `POST /api/auth/self` (ADMIN).\nClick **Authorize** and paste the `accessToken` to call protected routes.\n\n**Scope.** INSPECTOR/SUPERVISOR responses are filtered server-side by the\ncaller's zones and agency; clients cannot widen scope via query params.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "Login, token refresh, logout, and password management"
+    },
+    {
+      "name": "Licenses",
+      "description": "Public license type, detail, and QR verification"
+    },
+    {
+      "name": "Businesses",
+      "description": "Public business search, detail, and map"
+    },
+    {
+      "name": "My",
+      "description": "Authenticated user self-service (licenses)"
+    },
+    {
+      "name": "Notifications",
+      "description": "In-app notifications for the current user"
+    },
+    {
+      "name": "Inspection",
+      "description": "Inspection tasks and reports state machine"
+    },
+    {
+      "name": "Dashboards",
+      "description": "Role-specific aggregate dashboards"
+    },
+    {
+      "name": "Users",
+      "description": "User administration (admin / supervisor)"
+    },
+    {
+      "name": "Zones",
+      "description": "Zone master data"
+    },
+    {
+      "name": "Sync",
+      "description": "Agency data sync and CSV import"
+    },
+    {
+      "name": "Audit",
+      "description": "Audit log listing"
+    },
+    {
+      "name": "Export",
+      "description": "PDF/XLSX exports"
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "access-token": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "name": "Authorization",
+        "in": "header",
+        "description": "Paste the access token returned by an /auth login route."
+      }
+    },
+    "schemas": {
+      "TangRatLoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AuthTokenResponseDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SelfLoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RefreshDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "MessageResponseDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateTaskDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CancelTaskDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateReportDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ReturnReportDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateRolesDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateAgencyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateZonesDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateZoneDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateZoneDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

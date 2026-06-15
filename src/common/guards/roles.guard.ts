@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import { satisfiesRole } from '../auth.roles';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
 @Injectable()
@@ -20,9 +21,10 @@ export class RolesGuard implements CanActivate {
     if (!roles?.length) {
       return true;
     }
+    // Hierarchical: a higher-ranked role satisfies a lower-ranked requirement.
     const userRoles =
       context.switchToHttp().getRequest<Request>().user?.roles ?? [];
-    if (!roles.some((role) => userRoles.includes(role))) {
+    if (!satisfiesRole(userRoles, roles)) {
       throw new ForbiddenException();
     }
     return true;

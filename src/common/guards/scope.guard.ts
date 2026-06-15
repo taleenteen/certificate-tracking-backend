@@ -5,17 +5,15 @@ import {
   Injectable,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { isAdminTier } from '../auth.roles';
 
 @Injectable()
 export class ScopeGuard implements CanActivate {
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request>();
     const user = request.user;
-    if (
-      !user ||
-      user.roles.includes('admin') ||
-      user.roles.includes('public')
-    ) {
+    // Admin tier (admin/super_admin) and public have no zone/agency filter.
+    if (!user || isAdminTier(user.roles) || user.roles.includes('public')) {
       request.scope = null;
       return true;
     }

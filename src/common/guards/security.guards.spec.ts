@@ -29,6 +29,41 @@ describe('security guards', () => {
     ).toThrow(ForbiddenException);
   });
 
+  it('rejects super_admin claims from an app session (admin tier)', () => {
+    const guard = new ClientTypeGuard();
+    expect(() =>
+      guard.canActivate(
+        context({
+          user: {
+            sub: 'super',
+            jti: 'jti',
+            roles: ['super_admin'],
+            agency: null,
+            zoneIds: [],
+            authProvider: AuthProvider.self,
+            clientType: ClientType.app,
+          },
+        }),
+      ),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('gives the admin tier a null scope (no zone/agency filter)', () => {
+    const request = {
+      user: {
+        sub: 'super',
+        jti: 'jti',
+        roles: ['super_admin'],
+        agency: null,
+        zoneIds: [],
+        authProvider: AuthProvider.self,
+        clientType: ClientType.web_admin,
+      },
+    };
+    expect(new ScopeGuard().canActivate(context(request))).toBe(true);
+    expect(request).toMatchObject({ scope: null });
+  });
+
   it('derives inspector scope only from JWT claims', () => {
     const request = {
       query: { zoneId: 'client-controlled-zone' },

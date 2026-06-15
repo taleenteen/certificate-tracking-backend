@@ -18,7 +18,7 @@
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import * as request from 'supertest';
+import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
@@ -34,7 +34,11 @@ async function bootstrap(): Promise<INestApplication<App>> {
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
   await app.init();
   return app;
@@ -62,7 +66,11 @@ async function tangRatLogin(
 async function adminLogin(app: INestApplication<App>): Promise<string> {
   const res = await request(app.getHttpServer())
     .post('/api/auth/self')
-    .send({ username: 'superadmin', password: 'ChangeMe-2026!', totpCode: '000000' })
+    .send({
+      username: 'superadmin',
+      password: 'ChangeMe-2026!',
+      totpCode: '000000',
+    })
     .expect(201);
   const body = res.body as AuthBody;
   // Admin has mustChangePassword=true on first seed run. Change password then re-login.
@@ -74,7 +82,11 @@ async function adminLogin(app: INestApplication<App>): Promise<string> {
       .expect(201);
     const res2 = await request(app.getHttpServer())
       .post('/api/auth/self')
-      .send({ username: 'superadmin', password: 'ChangeMe-2026!', totpCode: '000000' })
+      .send({
+        username: 'superadmin',
+        password: 'ChangeMe-2026!',
+        totpCode: '000000',
+      })
       .expect(201);
     return (res2.body as AuthBody).accessToken;
   }
@@ -98,7 +110,10 @@ describe('Security integration tests', () => {
 
   describe('Refresh token replay detection', () => {
     it('revokes all sessions when a rotated refresh token is replayed', async () => {
-      const { accessToken, refreshToken } = await tangRatLogin(app, 'mock-inspector-1');
+      const { accessToken, refreshToken } = await tangRatLogin(
+        app,
+        'mock-inspector-1',
+      );
 
       // Perform a normal rotation — this marks the original token ROTATED and
       // issues new tokens.
@@ -137,46 +152,57 @@ describe('Security integration tests', () => {
   // 2 — Scope isolation: zone -----------------------------------------------
 
   describe('Scope isolation — zone', () => {
-    it('inspector cannot fetch a task outside their assigned zones', async () => {
-      // Login as inspector-1 (DIW, zones Z-BKK and Z-CBI).
-      const { accessToken: inspector1Token } = await tangRatLogin(app, 'mock-inspector-1');
-
-      // Get the DIW supervisor's task list to find a task in a zone the
-      // inspector-3 (ACFS, zones Z-CMI and Z-KKN) covers but inspector-1 does not.
-      const { accessToken: supDiwToken } = await tangRatLogin(app, 'mock-supervisor-diw');
-      const tasksRes = await request(app.getHttpServer())
+    it('inspector cannot fetch a task that is not assigned to them', async () => {
+      // inspector-1 is DIW; their own task list scopes to assignedTo = self.
+      const { accessToken: inspector1Token } = await tangRatLogin(
+        app,
+        'mock-inspector-1',
+      );
+      const ownRes = await request(app.getHttpServer())
         .get('/api/inspection-tasks')
-        .set('Authorization', `Bearer ${supDiwToken}`)
+        .set('Authorization', `Bearer ${inspector1Token}`)
         .expect(200);
+      const ownIds = new Set<string>(
+        (ownRes.body as Array<{ id: string }>).map((t) => t.id),
+      );
 
-      // If there are no tasks visible to the DIW supervisor we cannot run the
-      // sub-test — skip gracefully.
-      const tasks = tasksRes.body as Array<{ id: string; zoneId: string; assignedTo: string }>;
-      if (!tasks.length) {
-        console.warn('No seeded tasks found — skipping zone-scope sub-test');
+      // The ACFS supervisor's tasks are a different agency/zone — guaranteed not
+      // assigned to inspector-1. Use one as the out-of-scope target.
+      const { accessToken: supAcfsToken } = await tangRatLogin(
+        app,
+        'mock-supervisor-acfs',
+      );
+      const acfsRes = await request(app.getHttpServer())
+        .get('/api/inspection-tasks')
+        .set('Authorization', `Bearer ${supAcfsToken}`)
+        .expect(200);
+      const acfsTasks = acfsRes.body as Array<{ id: string }>;
+      const outOfScope = acfsTasks.find((t) => !ownIds.has(t.id));
+      if (!outOfScope) {
+        console.warn('No out-of-scope task seeded — skipping sub-test');
         return;
       }
 
-      const anyTaskId = tasks[0].id;
-
-      // Inspector-3 is ACFS and cannot see DIW supervisor's tasks.
-      // However, inspector-1 can only see their own tasks (assignedTo = me).
-      // Requesting a task assigned to someone else → 404.
-      const notAssignedTask = tasks.find(
-        (t) => t.assignedTo !== 'inspector-1-id',
-      );
-      if (!notAssignedTask) return;
-
+      // inspector-1 cannot read a task that is not theirs → 404.
       await request(app.getHttpServer())
-        .get(`/api/inspection-tasks/${notAssignedTask.id}`)
+        .get(`/api/inspection-tasks/${outOfScope.id}`)
         .set('Authorization', `Bearer ${inspector1Token}`)
         .expect(404);
 
-      // Accessing the same task as the supervisor (who has scope) — works.
+      // The ACFS supervisor, who has scope over it, can read it → 200.
       await request(app.getHttpServer())
-        .get(`/api/inspection-tasks/${anyTaskId}`)
-        .set('Authorization', `Bearer ${supDiwToken}`)
+        .get(`/api/inspection-tasks/${outOfScope.id}`)
+        .set('Authorization', `Bearer ${supAcfsToken}`)
         .expect(200);
+
+      // Positive control: inspector-1 can read one of their own tasks → 200.
+      if (ownIds.size > 0) {
+        const ownId = [...ownIds][0];
+        await request(app.getHttpServer())
+          .get(`/api/inspection-tasks/${ownId}`)
+          .set('Authorization', `Bearer ${inspector1Token}`)
+          .expect(200);
+      }
     });
   });
 
@@ -184,8 +210,14 @@ describe('Security integration tests', () => {
 
   describe('Scope isolation — agency', () => {
     it('ACFS supervisor cannot see DIW tasks in their zone list', async () => {
-      const { accessToken: supAcfsToken } = await tangRatLogin(app, 'mock-supervisor-acfs');
-      const { accessToken: supDiwToken } = await tangRatLogin(app, 'mock-supervisor-diw');
+      const { accessToken: supAcfsToken } = await tangRatLogin(
+        app,
+        'mock-supervisor-acfs',
+      );
+      const { accessToken: supDiwToken } = await tangRatLogin(
+        app,
+        'mock-supervisor-diw',
+      );
 
       const acfsTasks = await request(app.getHttpServer())
         .get('/api/inspection-tasks')
@@ -212,7 +244,10 @@ describe('Security integration tests', () => {
 
   describe('Conflict of interest', () => {
     it('returns 409 when assigning a task to the business owner', async () => {
-      const { accessToken: supDiwToken } = await tangRatLogin(app, 'mock-supervisor-diw');
+      const { accessToken: supDiwToken } = await tangRatLogin(
+        app,
+        'mock-supervisor-diw',
+      );
 
       // Look up the public-owner user ID and their owned business ID.
       const adminToken = await adminLogin(app);
@@ -220,11 +255,13 @@ describe('Security integration tests', () => {
         .get('/api/users?q=เจ้าของกิจการ')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
-      const publicOwnerUser = (usersRes.body as Array<{ id: string; fullName: string }>).find(
-        (u) => u.fullName.includes('เจ้าของกิจการ'),
-      );
+      const publicOwnerUser = (
+        usersRes.body as Array<{ id: string; fullName: string }>
+      ).find((u) => u.fullName.includes('เจ้าของกิจการ'));
       if (!publicOwnerUser) {
-        console.warn('Public owner not found — skipping conflict-of-interest sub-test');
+        console.warn(
+          'Public owner not found — skipping conflict-of-interest sub-test',
+        );
         return;
       }
 
@@ -232,7 +269,11 @@ describe('Security integration tests', () => {
       const businessesRes = await request(app.getHttpServer())
         .get('/api/businesses')
         .expect(200);
-      const businessList = (businessesRes.body as { data: Array<{ id: string; ownerUserId: string | null }> }).data;
+      const businessList = (
+        businessesRes.body as {
+          data: Array<{ id: string; ownerUserId: string | null }>;
+        }
+      ).data;
       const ownedBusiness = businessList.find(
         (b) => b.ownerUserId === publicOwnerUser.id,
       );
@@ -261,7 +302,9 @@ describe('Security integration tests', () => {
           expect([404, 409]).toContain(res.status);
         });
       if (conflictRes.status === 409) {
-        expect((conflictRes.body as { message: string }).message).toMatch(/conflict/i);
+        expect((conflictRes.body as { message: string }).message).toMatch(
+          /conflict/i,
+        );
       }
     });
   });
@@ -302,10 +345,16 @@ describe('Security integration tests', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      const tasks = tasksRes.body as Array<{ id: string; status: string; reports: Array<{ id: string }> }>;
+      const tasks = tasksRes.body as Array<{
+        id: string;
+        status: string;
+        reports: Array<{ id: string }>;
+      }>;
       const taskWithReport = tasks.find((t) => t.reports?.length);
       if (!taskWithReport) {
-        console.warn('No tasks with reports for inspector-1 — skipping upload sub-test');
+        console.warn(
+          'No tasks with reports for inspector-1 — skipping upload sub-test',
+        );
         return;
       }
 
@@ -329,10 +378,15 @@ describe('Security integration tests', () => {
         .get('/api/inspection-tasks')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
-      const tasks = tasksRes.body as Array<{ id: string; reports: Array<{ id: string }> }>;
+      const tasks = tasksRes.body as Array<{
+        id: string;
+        reports: Array<{ id: string }>;
+      }>;
       const taskWithReport = tasks.find((t) => t.reports?.length);
       if (!taskWithReport) {
-        console.warn('No tasks with reports for inspector-1 — skipping size sub-test');
+        console.warn(
+          'No tasks with reports for inspector-1 — skipping size sub-test',
+        );
         return;
       }
 

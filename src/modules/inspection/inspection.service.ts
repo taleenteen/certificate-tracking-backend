@@ -14,6 +14,7 @@ import {
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
 import { JwtClaims, RequestScope } from '../../common/auth.types';
+import { isAdminTier } from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateTaskDto, UpdateReportDto } from './inspection.dto';
@@ -25,8 +26,12 @@ export class InspectionService {
     private readonly storage: StorageService,
   ) {}
 
-  private scopedWhere(user: JwtClaims, scope: RequestScope) {
-    if (user.roles.includes('supervisor')) {
+  private scopedWhere(user: JwtClaims, scope: RequestScope | null) {
+    // Admin tier sees every task (no zone/agency filter).
+    if (isAdminTier(user.roles)) {
+      return {} satisfies Prisma.InspectionTaskWhereInput;
+    }
+    if (user.roles.includes('supervisor') && scope) {
       return {
         zoneId: { in: scope.zoneIds },
         OR: [
@@ -53,7 +58,7 @@ export class InspectionService {
     });
   }
 
-  async findTask(id: string, user: JwtClaims, scope: RequestScope) {
+  async findTask(id: string, user: JwtClaims, scope: RequestScope | null) {
     const task = await this.prisma.inspectionTask.findFirst({
       where: { id, ...this.scopedWhere(user, scope) },
       include: {
@@ -77,14 +82,17 @@ export class InspectionService {
   async createTask(
     dto: CreateTaskDto,
     creator: JwtClaims,
-    scope: RequestScope,
+    scope: RequestScope | null,
   ) {
+    // Admin tier may create tasks in any zone/agency; supervisors are confined
+    // to their own scope.
+    const admin = isAdminTier(creator.roles);
     const [business, assignee] = await Promise.all([
       this.prisma.business.findFirst({
         where: {
           id: dto.businessId,
           deletedAt: null,
-          zoneId: { in: scope.zoneIds },
+          zoneId: admin ? undefined : { in: scope!.zoneIds },
         },
       }),
       this.prisma.systemUser.findFirst({
@@ -93,7 +101,7 @@ export class InspectionService {
           isActive: true,
           deletedAt: null,
           roles: { has: 'inspector' },
-          agency: scope.agency,
+          agency: admin ? undefined : scope!.agency,
         },
         include: { userZones: true },
       }),
@@ -112,7 +120,7 @@ export class InspectionService {
         where: {
           id: dto.licenseId,
           businessId: business.id,
-          licenseType: { agency: scope.agency },
+          licenseType: admin ? undefined : { agency: scope!.agency },
           deletedAt: null,
         },
       });
@@ -211,7 +219,7 @@ export class InspectionService {
     id: string,
     reason: string,
     user: JwtClaims,
-    scope: RequestScope,
+    scope: RequestScope | null,
   ) {
     await this.findTask(id, user, scope);
     const task = await this.prisma.inspectionTask.findUnique({
@@ -346,27 +354,35 @@ export class InspectionService {
     });
   }
 
-  private async scopedReport(id: string, user: JwtClaims, scope: RequestScope) {
+  private async scopedReport(
+    id: string,
+    user: JwtClaims,
+    scope: RequestScope | null,
+  ) {
+    const admin = isAdminTier(user.roles);
     const report = await this.prisma.inspectionReport.findFirst({
       where: {
         id,
-        task: {
-          zoneId: { in: scope.zoneIds },
-          OR: [
-            { license: { licenseType: { agency: scope.agency } } },
-            { licenseId: null },
-          ],
-        },
+        task: admin
+          ? undefined
+          : {
+              zoneId: { in: scope!.zoneIds },
+              OR: [
+                { license: { licenseType: { agency: scope!.agency } } },
+                { licenseId: null },
+              ],
+            },
       },
       include: { task: { include: { license: true } } },
     });
-    if (!report || !user.roles.includes('supervisor')) {
+    // Admin tier reviews any report; otherwise only supervisors in scope.
+    if (!report || (!admin && !user.roles.includes('supervisor'))) {
       throw new NotFoundException();
     }
     return report;
   }
 
-  async approveReport(id: string, user: JwtClaims, scope: RequestScope) {
+  async approveReport(id: string, user: JwtClaims, scope: RequestScope | null) {
     const report = await this.scopedReport(id, user, scope);
     if (report.task.status !== TaskStatus.PENDING_REVIEW || !report.result) {
       throw new UnprocessableEntityException('Invalid task transition');
@@ -417,7 +433,7 @@ export class InspectionService {
     id: string,
     reviewComment: string,
     user: JwtClaims,
-    scope: RequestScope,
+    scope: RequestScope | null,
   ) {
     const report = await this.scopedReport(id, user, scope);
     if (report.task.status !== TaskStatus.PENDING_REVIEW) {
