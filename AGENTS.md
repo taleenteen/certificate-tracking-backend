@@ -86,6 +86,41 @@ public(0) < inspector(1) < supervisor(2) < admin(3) < super_admin(4)
   /auth/login`) **in addition to** Tang Rat. See `docs/AUTHENTICATION.md` for the
   full auth model.
 
+- **D5 (2026-06-15)**: Proof-based identity linking. `citizenId` stored as
+  **plaintext** (owner-authorized exception to Golden Rule #2 and field rename
+  rule). Only set via Tang Rat verification; never auto-merged.
+  `AccountLinkChallenge` model for handshake. See `docs/PLAN_PROFILE_IDENTITY_BINDING.md`.
+
+- **D6 (2026-06-16)**: Juristic persons are a **multi-tenant corporate portal**.
+  `SystemUser.juristicPersonId` FK is removed. Membership is many-to-many via
+  `JuristicMember` junction. Juristic roles (`OWNER/ADMIN/MEMBER` + free-text
+  `position`) are **orthogonal** to platform roles and never grant platform
+  privileges. Active context is hybrid-stored (`UserSession.activeJuristicId` +
+  JWT mirror + live `JuristicContextGuard` check). Switch via
+  `POST /api/auth/context`. Every corporate mutation is audited with **both**
+  `juristicId` and `userId`. See `docs/PLAN_JURISTIC_MULTITENANT.md`.
+
+  New files: `src/modules/juristic/`, `src/common/guards/juristic-context.guard.ts`,
+  `src/common/guards/require-juristic-role.guard.ts`,
+  `src/common/decorators/juristic-context.decorator.ts`,
+  `src/common/decorators/require-juristic-role.decorator.ts`.
+
+- **D7 (2026-06-16)**: Self-service **join request** flow (Tang Rat, no DBD).
+  `JoinRequestStatus` enum + `JuristicJoinRequest` model (migration:
+  `20260616030000_juristic_join_requests`). Partial unique index on
+  `(juristic_person_id, user_id) WHERE status = 'PENDING'` prevents duplicate
+  pending requests. **Hybrid approval routing**: companies with an active OWNER →
+  peer queue (OWNER/ADMIN approves via `GET/POST /api/juristic/:id/join-requests`);
+  companies with no OWNER → first-owner claim → platform staff queue
+  (`GET/POST /api/juristic-requests/admin/*`). Identity gate: verified citizenId
+  required. Rate limit: ≤3/hr + ≤5 total pending. Expiry: 30 days, lazily swept.
+  Seed: `join-requester` user with verified citizenId + no memberships; companies
+  [2..7] remain ownerless (first-owner claim demo). See `docs/PLAN_JURISTIC_JOIN_REQUESTS.md`.
+
+  New files: `src/modules/juristic/juristic-join-request.controller.ts`.
+  Extended: `juristic.service.ts` (+10 methods), `juristic.dto.ts` (+10 DTOs),
+  `juristic.controller.ts` (+3 peer-approval routes), `juristic.module.ts`.
+
 ## Commands
 
 ```bash

@@ -9,15 +9,27 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
-import { AuthProvider, ClientType, Prisma, SystemUser } from '@prisma/client';
+import {
+  AuthProvider,
+  ClientType,
+  JuristicRole,
+  Prisma,
+  SystemUser,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { authenticator } from 'otplib';
 import { JwtClaims } from '../../common/auth.types';
-import { isAdminTier } from '../../common/auth.roles';
+import { isAdminTier, maxRank } from '../../common/auth.roles'; // for D5 cross-tier guard in merges (Tang Rat primary)
 import { PrismaService } from '../../prisma/prisma.service';
 import { TANG_RAT_PROVIDER } from '../external/external.module';
 import type { TangRatProvider } from '../external/tangrat.provider';
+import {
+  storeCitizenId,
+  isValidThaiCitizenId,
+  last4,
+} from '../../common/crypto/citizen-id';
+import { ProfileChannel } from '@prisma/client';
 
 interface RequestMetadata {
   ipAddress?: string;
@@ -37,12 +49,27 @@ export class AuthService {
     return createHash('sha256').update(value).digest('hex');
   }
 
+  // D5 helpers (Tang Rat primary).
+  // Owner decision: citizen ID is stored as plaintext in `citizenId`.
+  // We never rename the Prisma field (Golden Rule).
+  private storeCitizenIdSafe(raw?: string): string | null {
+    if (!raw || !isValidThaiCitizenId(raw)) return null;
+    return storeCitizenId(raw);
+  }
+  private isValidCitizenId(raw?: string): boolean {
+    return !!raw && isValidThaiCitizenId(raw);
+  }
+  private maskEmail(e: string): string {
+    return e.replace(/^(.).+(@.+)$/, '$1***$2');
+  }
+
   private async claimsFor(
     user: SystemUser,
     jti: string,
     authProvider: AuthProvider,
     clientType: ClientType,
     citizenSub?: string,
+    juristicCtx?: { juristicId: string; role: JuristicRole },
   ): Promise<JwtClaims> {
     const zones = await this.prisma.userZone.findMany({
       where: { userId: user.id },
@@ -57,7 +84,51 @@ export class AuthService {
       authProvider,
       clientType,
       citizenSub,
+      // D5 (Tang Rat primary): flags only, no PII
+      hasCitizenId: !!user.citizenId,
+      channel: authProvider === AuthProvider.tang_rat ? 'tang_rat' : 'domain',
+      // D6: juristic context claims (only when in company mode)
+      ...(juristicCtx && {
+        activeJuristicId: juristicCtx.juristicId,
+        juristicRole: juristicCtx.role,
+      }),
     };
+  }
+
+  // D6: re-mint the access token for an existing session (context switch or refresh carry-over).
+  // Does NOT create a new session row — only rotates the JTI + updates activeJuristicId.
+  private async reissueAccessToken(
+    sessionId: string,
+    user: SystemUser,
+    session: {
+      authProvider: AuthProvider;
+      clientType: ClientType;
+      tangRatSub: string | null;
+    },
+    juristicCtx?: { juristicId: string; role: JuristicRole } | null,
+  ): Promise<string> {
+    const newJti = randomUUID();
+    const claims = await this.claimsFor(
+      user,
+      newJti,
+      session.authProvider,
+      session.clientType,
+      session.tangRatSub ?? undefined,
+      juristicCtx ?? undefined,
+    );
+    const accessToken = await this.jwt.signAsync(claims, {
+      algorithm: 'RS256',
+      expiresIn: (process.env.ACCESS_TOKEN_TTL ??
+        '15m') as JwtSignOptions['expiresIn'],
+    });
+    await this.prisma.userSession.update({
+      where: { id: sessionId },
+      data: {
+        accessTokenJti: newJti,
+        activeJuristicId: juristicCtx?.juristicId ?? null,
+      },
+    });
+    return accessToken;
   }
 
   private async createSession(
@@ -66,6 +137,7 @@ export class AuthService {
     clientType: ClientType,
     metadata: RequestMetadata,
     tangRatSub?: string,
+    juristicCtx?: { juristicId: string; role: JuristicRole },
   ) {
     const refreshToken = randomBytes(64).toString('hex');
     const jti = randomUUID();
@@ -81,6 +153,7 @@ export class AuthService {
         authProvider,
         clientType,
         tangRatSub,
+        activeJuristicId: juristicCtx?.juristicId ?? null,
         ipAddress: metadata.ipAddress,
         userAgent: metadata.userAgent,
         expiresAt,
@@ -92,6 +165,7 @@ export class AuthService {
       authProvider,
       clientType,
       tangRatSub,
+      juristicCtx,
     );
     const accessToken = await this.jwt.signAsync(claims, {
       algorithm: 'RS256',
@@ -183,7 +257,29 @@ export class AuthService {
       ClientType.app,
       metadata,
     );
+
+    // D5 secondary hint (non-blocking): if a verified Tang Rat account already has this email, suggest linking from profile later.
+    let suggestion: { type: 'email_match'; maskedEmail: string } | undefined;
+    if (dto.email) {
+      const candidate = await this.prisma.systemUser.findFirst({
+        where: {
+          email: dto.email,
+          citizenId: { not: null },
+          id: { not: user.id },
+          deletedAt: null,
+        },
+        select: { email: true },
+      });
+      if (candidate?.email) {
+        suggestion = {
+          type: 'email_match',
+          maskedEmail: this.maskEmail(candidate.email),
+        };
+      }
+    }
+
     await this.audit(user.id, 'REGISTER', metadata);
+    if (suggestion) (result as any).linkSuggestion = suggestion; // eslint-disable-line @typescript-eslint/no-unsafe-member-access
     return result;
   }
 
@@ -267,7 +363,8 @@ export class AuthService {
 
   async tangRatLogin(mToken: string, metadata: RequestMetadata) {
     const identity = await this.tangRat.verify(mToken);
-    let link = await this.prisma.authProviderLink.findUnique({
+    // MOCK: replace in UAT. citizenId (if present) is Tang Rat-verified (primary per D5).
+    const link = await this.prisma.authProviderLink.findUnique({
       where: {
         provider_providerSub: {
           provider: AuthProvider.tang_rat,
@@ -276,53 +373,138 @@ export class AuthService {
       },
       include: { user: true },
     });
-    if (!link) {
-      const user = await this.prisma.systemUser.create({
-        data: {
-          fullName: identity.fullName,
+
+    if (link) {
+      // Existing tang_rat link.
+      if (identity.citizenId && !link.user.citizenId) {
+        // Back-fill (plaintext storage per owner 2026-06-15 decision)
+        const rawId = identity.citizenId;
+        if (this.isValidCitizenId(rawId)) {
+          await this.prisma.systemUser.update({
+            where: { id: link.user.id },
+            data: {
+              citizenId: this.storeCitizenIdSafe(rawId)!, // store plaintext
+              citizenIdVerifiedAt: new Date(),
+              citizenIdLast4: last4(rawId),
+              primaryChannel: ProfileChannel.tang_rat,
+            },
+          });
+        }
+      }
+      await this.prisma.$transaction([
+        this.prisma.authProviderLink.update({
+          where: { id: link.id },
+          data: { lastLoginAt: new Date(), verifiedAt: new Date() },
+        }),
+        this.prisma.systemUser.update({
+          where: { id: link.user.id },
+          data: { lastLoginAt: new Date() },
+        }),
+      ]);
+      const result = await this.createSession(
+        link.user,
+        AuthProvider.tang_rat,
+        ClientType.app,
+        metadata,
+        identity.sub,
+      );
+      await this.audit(link.user.id, 'LOGIN', metadata);
+      return result;
+    }
+
+    // No link for this sub yet.
+    if (identity.citizenId) {
+      const rawId = this.storeCitizenIdSafe(identity.citizenId);
+      if (rawId) {
+        // Direct plaintext match (owner decision: searchable storage)
+        const owner = await this.prisma.systemUser.findFirst({
+          where: { citizenId: rawId, deletedAt: null },
+        });
+        if (owner) {
+          // Same verified citizen already has canonical account (primary Tang Rat path).
+          // Attach this sub safely (Tang Rat verified the ID).
+          await this.prisma.authProviderLink.create({
+            data: {
+              userId: owner.id,
+              provider: AuthProvider.tang_rat,
+              providerSub: identity.sub,
+              providerEmail: identity.email,
+              providerName: identity.fullName,
+              providerPhone: identity.phone,
+              verifiedAt: new Date(),
+            },
+          });
+          await this.audit(owner.id, 'IDENTITY_LINK_AUTO', metadata, {
+            tangRatSub: identity.sub,
+          });
+          const result = await this.createSession(
+            owner,
+            AuthProvider.tang_rat,
+            ClientType.app,
+            metadata,
+            identity.sub,
+          );
+          await this.audit(owner.id, 'LOGIN', metadata);
+          return result;
+        }
+      }
+    }
+
+    // No verified owner. Create new canonical from the verified Tang Rat identity (primary path).
+    const user = await this.prisma.systemUser.create({
+      data: {
+        fullName: identity.fullName,
+        email: identity.email,
+        phone: identity.phone,
+        roles: ['public'],
+        primaryChannel: ProfileChannel.tang_rat,
+        citizenId: this.storeCitizenIdSafe(identity.citizenId), // plaintext
+        citizenIdVerifiedAt: identity.citizenId ? new Date() : null,
+        citizenIdLast4: identity.citizenId ? last4(identity.citizenId) : null,
+      },
+    });
+    await this.prisma.authProviderLink.create({
+      data: {
+        userId: user.id,
+        provider: AuthProvider.tang_rat,
+        providerSub: identity.sub,
+        providerEmail: identity.email,
+        providerName: identity.fullName,
+        providerPhone: identity.phone,
+        verifiedAt: new Date(),
+      },
+    });
+
+    // OPTIONAL non-blocking hint (secondary domain path): if a pw account has same email, surface so user can link later from profile.
+    let suggestion: { type: 'email_match'; maskedEmail: string } | undefined;
+    if (identity.email) {
+      const candidate = await this.prisma.systemUser.findFirst({
+        where: {
           email: identity.email,
-          phone: identity.phone,
-          roles: ['public'],
+          passwordHash: { not: null },
+          id: { not: user.id },
+          deletedAt: null,
         },
+        select: { email: true },
       });
-      link = await this.prisma.authProviderLink.create({
-        data: {
-          userId: user.id,
-          provider: AuthProvider.tang_rat,
-          providerSub: identity.sub,
-          providerEmail: identity.email,
-          providerName: identity.fullName,
-        },
-        include: { user: true },
-      });
+      if (candidate?.email) {
+        suggestion = {
+          type: 'email_match',
+          maskedEmail: this.maskEmail(candidate.email),
+        };
+      }
     }
-    if (
-      !link.isActive ||
-      !link.user.isActive ||
-      link.user.deletedAt ||
-      isAdminTier(link.user.roles)
-    ) {
-      // Admin tier (admin/super_admin) must use the web portal (self-login).
-      throw new ForbiddenException();
-    }
-    await this.prisma.$transaction([
-      this.prisma.authProviderLink.update({
-        where: { id: link.id },
-        data: { lastLoginAt: new Date() },
-      }),
-      this.prisma.systemUser.update({
-        where: { id: link.user.id },
-        data: { lastLoginAt: new Date() },
-      }),
-    ]);
+
     const result = await this.createSession(
-      link.user,
+      user,
       AuthProvider.tang_rat,
       ClientType.app,
       metadata,
       identity.sub,
     );
-    await this.audit(link.user.id, 'LOGIN', metadata);
+    await this.audit(user.id, 'LOGIN', metadata);
+    // Attach suggestion if present (back-compat: callers that only expect tokens still work; dto extended in phase).
+    if (suggestion) (result as any).linkSuggestion = suggestion; // eslint-disable-line @typescript-eslint/no-unsafe-member-access
     return result;
   }
 
@@ -430,12 +612,33 @@ export class AuthService {
         revokeReason: 'ROTATED',
       },
     });
+
+    // D6: carry juristic context if membership is still active; silently drop to user mode if revoked.
+    let juristicCtx: { juristicId: string; role: JuristicRole } | undefined;
+    if (session.activeJuristicId) {
+      const membership = await this.prisma.juristicMember.findUnique({
+        where: {
+          juristicPersonId_userId: {
+            juristicPersonId: session.activeJuristicId,
+            userId: session.userId,
+          },
+        },
+      });
+      if (membership?.isActive) {
+        juristicCtx = {
+          juristicId: session.activeJuristicId,
+          role: membership.role,
+        };
+      }
+    }
+
     return this.createSession(
       session.user,
       session.authProvider,
       session.clientType,
       metadata,
       session.tangRatSub ?? undefined,
+      juristicCtx,
     );
   }
 
@@ -537,5 +740,377 @@ export class AuthService {
       }),
     ]);
     return { success: true };
+  }
+
+  // ───────────────────────── D6 Context switching ─────────────────────────
+
+  /**
+   * Switch the session into a juristic company context (or back to user mode).
+   * Body `{ juristicId: string | null }`. Re-mints the access token in-place;
+   * the existing session row and refresh token are reused (no full re-login).
+   * Revokes the old JTI immediately so stale tokens reject on next request.
+   */
+  async switchContext(
+    claims: JwtClaims,
+    juristicId: string | null,
+    metadata: RequestMetadata,
+  ) {
+    const session = await this.prisma.userSession.findUnique({
+      where: { accessTokenJti: claims.jti },
+      include: { user: true },
+    });
+    if (
+      !session ||
+      session.isRevoked ||
+      session.expiresAt < new Date() ||
+      !session.user.isActive
+    ) {
+      throw new UnauthorizedException();
+    }
+
+    let juristicCtx: { juristicId: string; role: JuristicRole } | null = null;
+    if (juristicId !== null) {
+      const membership = await this.prisma.juristicMember.findUnique({
+        where: {
+          juristicPersonId_userId: {
+            juristicPersonId: juristicId,
+            userId: session.userId,
+          },
+        },
+      });
+      if (!membership || !membership.isActive) {
+        throw new ForbiddenException('Not a member of this organization');
+      }
+      juristicCtx = { juristicId, role: membership.role };
+    }
+
+    const accessToken = await this.reissueAccessToken(
+      session.id,
+      session.user,
+      session,
+      juristicCtx,
+    );
+
+    await this.audit(session.userId, 'CONTEXT_SWITCH', metadata, {
+      juristicId: juristicId ?? null,
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: session.user.id,
+        fullName: session.user.fullName,
+        roles: session.user.roles,
+        agency: session.user.agency,
+      },
+      activeJuristicId: juristicId ?? null,
+    };
+  }
+
+  // ───────────────────────── D5 Tang Rat-prioritized linking + merge (phase 5) ─────────────────────────
+  // Note: citizenId column holds plaintext (owner decision). Field name not renamed.
+
+  /**
+   * Public entry for /my/identities/tang-rat (and reusable).
+   * Verifies mToken (proof of Tang Rat side). If collision on sub or citizenId,
+   * **always** absorbs the non-Tang-Rat (domain-initiated) side into the Tang Rat
+   * canonical. Primary Tang Rat accounts are never absorbed. Full transactional
+   * repainting of ownership/assignments + session revocation on absorbed + audits.
+   */
+  async linkOrMergeTangRatProof(initiatorUserId: string, mToken: string) {
+    const identity = await this.tangRat.verify(mToken);
+    const initiator = await this.prisma.systemUser.findUnique({
+      where: { id: initiatorUserId, deletedAt: null },
+    });
+    if (!initiator || !initiator.isActive) throw new ForbiddenException();
+
+    // 1. Existing link for this exact sub?
+    const existingLink = await this.prisma.authProviderLink.findUnique({
+      where: {
+        provider_providerSub: {
+          provider: AuthProvider.tang_rat,
+          providerSub: identity.sub,
+        },
+      },
+      include: { user: true },
+    });
+
+    if (existingLink) {
+      if (existingLink.userId === initiatorUserId) {
+        // Already linked to self — idempotent success (back-fill citizen if newly provided)
+        if (
+          identity.citizenId &&
+          !initiator.citizenId &&
+          this.isValidCitizenId(identity.citizenId)
+        ) {
+          await this.prisma.systemUser.update({
+            where: { id: initiatorUserId },
+            data: {
+              citizenId: this.storeCitizenIdSafe(identity.citizenId)!, // plaintext storage
+              citizenIdVerifiedAt: new Date(),
+              citizenIdLast4: last4(identity.citizenId),
+              primaryChannel: ProfileChannel.tang_rat,
+            },
+          });
+        }
+        await this.prisma.authProviderLink.update({
+          where: { id: existingLink.id },
+          data: { lastLoginAt: new Date(), verifiedAt: new Date() },
+        });
+        return;
+      }
+      // Collision on sub → merge (the link owner may be Tang Rat canonical or not; rules below decide)
+      await this.mergeIfAllowedAndExecute(
+        initiatorUserId,
+        existingLink.userId,
+        'mtoken',
+        identity,
+      );
+      return;
+    }
+
+    // 2. No link for sub. Check citizen collision on a different verified account.
+    const canonicalOwnerId = initiatorUserId;
+    if (identity.citizenId) {
+      const rawId = this.storeCitizenIdSafe(identity.citizenId);
+      if (rawId) {
+        const ownerByCitizen = await this.prisma.systemUser.findFirst({
+          where: { citizenId: rawId, deletedAt: null },
+        });
+        if (ownerByCitizen && ownerByCitizen.id !== initiatorUserId) {
+          // Citizen collision → merge (plaintext match, Tang Rat canonical wins)
+          await this.mergeIfAllowedAndExecute(
+            initiatorUserId,
+            ownerByCitizen.id,
+            'mtoken',
+            identity,
+          );
+          return;
+        }
+      }
+    }
+
+    // 3. Safe attach to current (or the owner we chose)
+    await this.prisma.authProviderLink.create({
+      data: {
+        userId: canonicalOwnerId,
+        provider: AuthProvider.tang_rat,
+        providerSub: identity.sub,
+        providerEmail: identity.email,
+        providerName: identity.fullName,
+        providerPhone: identity.phone,
+        verifiedAt: new Date(),
+      },
+    });
+
+    // Back-fill citizen on the target if this mToken brings the first verified ID
+    const target =
+      canonicalOwnerId === initiatorUserId
+        ? initiator
+        : (await this.prisma.systemUser.findUnique({
+            where: { id: canonicalOwnerId },
+          }))!;
+    if (
+      identity.citizenId &&
+      !target.citizenId &&
+      this.isValidCitizenId(identity.citizenId)
+    ) {
+      await this.prisma.systemUser.update({
+        where: { id: canonicalOwnerId },
+        data: {
+          citizenId: this.storeCitizenIdSafe(identity.citizenId)!, // plaintext
+          citizenIdVerifiedAt: new Date(),
+          citizenIdLast4: last4(identity.citizenId),
+          primaryChannel: ProfileChannel.tang_rat,
+        },
+      });
+    }
+
+    await this.audit(
+      canonicalOwnerId,
+      'IDENTITY_LINK',
+      {},
+      {
+        sub: identity.sub,
+      },
+    );
+  }
+
+  /**
+   * Core D5 merge: decide canonical vs absorbed (Tang Rat verified side + rank + age wins;
+   * Tang Rat account is *never* the absorbed one), guard cross-tier/suspended, then
+   * one big $transaction that repaints every FK reference and soft-deletes the absorbed.
+   * Never call directly from primary Tang Rat login paths.
+   */
+  private async mergeIfAllowedAndExecute(
+    initiatorId: string,
+    otherId: string,
+    method: 'mtoken' | 'password',
+    identity?: { sub: string; citizenId?: string },
+  ) {
+    const [initiator, other] = await Promise.all([
+      this.prisma.systemUser.findUnique({
+        where: { id: initiatorId, deletedAt: null },
+      }),
+      this.prisma.systemUser.findUnique({
+        where: { id: otherId, deletedAt: null },
+      }),
+    ]);
+    if (!initiator || !other || !initiator.isActive || !other.isActive) {
+      throw new ForbiddenException('One or both accounts are inactive');
+    }
+
+    const initRank = maxRank(initiator.roles);
+    const otherRank = maxRank(other.roles);
+
+    // Cross-tier guard (public vs staff): route to admin
+    const initIsStaff = initRank >= 1;
+    const otherIsStaff = otherRank >= 1;
+    if (initIsStaff !== otherIsStaff) {
+      throw new ConflictException(
+        'Cross-tier merge (public ↔ staff) must be performed by an administrator',
+      );
+    }
+
+    // Decide canonical: prefer the side that already has verified citizen (Tang Rat primary),
+    // or the one that the mToken is proving (the "other" in a link collision from domain).
+    // Tang Rat account is never absorbed.
+    let canonicalId: string;
+    let absorbedId: string;
+
+    const initiatorHasCitizen = !!initiator.citizenId;
+    const otherHasCitizen = !!other.citizenId;
+
+    if (initiatorHasCitizen && !otherHasCitizen) {
+      canonicalId = initiatorId;
+      absorbedId = otherId;
+    } else if (!initiatorHasCitizen && otherHasCitizen) {
+      canonicalId = otherId;
+      absorbedId = initiatorId;
+    } else if (initiatorHasCitizen && otherHasCitizen) {
+      // Both verified (rare) — higher rank or older wins; protect if one is "more Tang"
+      canonicalId =
+        otherRank > initRank ||
+        (otherRank === initRank && other.createdAt < initiator.createdAt)
+          ? otherId
+          : initiatorId;
+      absorbedId = canonicalId === initiatorId ? otherId : initiatorId;
+    } else {
+      // Neither has citizen yet — prefer the side the proof (mToken) is coming from as "more Tang"
+      // In practice for domain-link this means the collision target (other) becomes canonical.
+      canonicalId = otherId; // the one the mToken resolved to via existing link or citizen
+      absorbedId = initiatorId;
+    }
+
+    // Extra safety: if the chosen absorbed happens to be the one with the verified citizen
+    // and the canonical doesn't, flip (shouldn't happen with above logic).
+    if (absorbedId === initiatorId && initiatorHasCitizen && !otherHasCitizen) {
+      canonicalId = initiatorId;
+      absorbedId = otherId;
+    }
+    if (absorbedId === otherId && otherHasCitizen && !initiatorHasCitizen) {
+      canonicalId = otherId;
+      absorbedId = initiatorId;
+    }
+
+    // Final guard: never absorb a higher-or-equal staff account into public, etc. (already cross-tier checked)
+    // Perform the repaint tx
+    await this.prisma.$transaction(async (tx) => {
+      // Repaint all FKs from absorbed → canonical (list from plan §7.5)
+      await tx.authProviderLink.updateMany({
+        where: { userId: absorbedId },
+        data: { userId: canonicalId },
+      });
+      await tx.business.updateMany({
+        where: { ownerUserId: absorbedId },
+        data: { ownerUserId: canonicalId },
+      });
+      await tx.inspectionTask.updateMany({
+        where: { assignedTo: absorbedId },
+        data: { assignedTo: canonicalId },
+      });
+      await tx.inspectionTask.updateMany({
+        where: { createdBy: absorbedId },
+        data: { createdBy: canonicalId },
+      });
+      await tx.inspectionReport.updateMany({
+        where: { inspectorId: absorbedId },
+        data: { inspectorId: canonicalId },
+      });
+      await tx.inspectionReport.updateMany({
+        where: { reviewedBy: absorbedId },
+        data: { reviewedBy: canonicalId },
+      });
+      await tx.auditLog.updateMany({
+        where: { userId: absorbedId },
+        data: { userId: canonicalId },
+      });
+      await tx.notification.updateMany({
+        where: { recipientId: absorbedId },
+        data: { recipientId: canonicalId },
+      });
+      await tx.passwordResetToken.updateMany({
+        where: { userId: absorbedId },
+        data: { userId: canonicalId },
+      });
+      await tx.syncLog.updateMany({
+        where: { triggeredBy: absorbedId },
+        data: { triggeredBy: canonicalId },
+      });
+
+      // UserZone: move + dedupe
+      const zonesToMove = await tx.userZone.findMany({
+        where: { userId: absorbedId },
+      });
+      for (const z of zonesToMove) {
+        await tx.userZone.upsert({
+          where: { userId_zoneId: { userId: canonicalId, zoneId: z.zoneId } },
+          create: { userId: canonicalId, zoneId: z.zoneId },
+          update: {},
+        });
+      }
+      await tx.userZone.deleteMany({ where: { userId: absorbedId } });
+
+      // Sessions on absorbed: revoke all
+      await tx.userSession.updateMany({
+        where: { userId: absorbedId, isRevoked: false },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+          revokeReason: 'ACCOUNT_MERGE',
+        },
+      });
+
+      // Soft-delete absorbed (never hard delete)
+      await tx.systemUser.update({
+        where: { id: absorbedId },
+        data: { isActive: false, deletedAt: new Date() },
+      });
+
+      // If the absorbed had a tang link that we are "moving", ensure the sub link points to canonical
+      // (the link rows were already repainted above)
+    });
+
+    await this.audit(
+      initiatorId,
+      'ACCOUNT_MERGE',
+      {},
+      {
+        canonical: canonicalId,
+        absorbed: absorbedId,
+        method,
+        citizenSub: identity?.sub,
+      },
+    );
+
+    await this.audit(
+      canonicalId,
+      'IDENTITY_LINK',
+      {},
+      {
+        viaMerge: true,
+        absorbed: absorbedId,
+      },
+    );
   }
 }

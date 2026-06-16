@@ -20,6 +20,10 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/')
       .expect(200)
-      .expect('Hello World!');
+      .expect('Content-Type', /html/)
+      .then((response) => {
+        expect(response.text).toContain('<!DOCTYPE html>');
+        expect(response.text).toContain('E-LICENSE PLATFORM');
+      });
   });
 });

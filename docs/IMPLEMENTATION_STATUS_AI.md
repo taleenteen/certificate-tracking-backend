@@ -14,6 +14,41 @@
 
 ## 0. Change Log
 
+- **2026-06-16 (Startup URL logging)** — Added built-in NestJS `Logger` in
+  `src/main.ts` to log the application API base URL and Swagger UI URL on startup.
+  Verified with `npm run lint` and `npm run build`.
+
+- **2026-06-16 (D7 — Self-service juristic join requests)** — `JoinRequestStatus`
+  enum + `JuristicJoinRequest` model. Migration: `20260616030000_juristic_join_requests`
+  (includes partial unique index `uniq_pending_join`). Hybrid approval routing:
+  peer queue on `GET/POST /api/juristic/:id/join-requests/{approve,reject}`;
+  first-owner staff queue on `GET/POST /api/juristic-requests/admin/*`. Requester
+  endpoints: `GET /api/juristic-requests/companies`, `POST /api/juristic-requests`,
+  `GET /api/juristic-requests/mine`, `DELETE /api/juristic-requests/:id`. Rate limit
+  (3/hr + 5 total pending), 30-day expiry with lazy sweep, inline notifications.
+  Seed: `join-requester` user added. Verified: `npm run build`, `npm test` (22/22),
+  lint clean. **Pending DB start**: run `prisma migrate deploy` + `prisma db seed`
+  to apply migration and reset seed with new user.
+
+- **2026-06-16 (D6 — Juristic multi-tenant corporate portal)** — Full 7-phase
+  implementation. Schema: added `JuristicRole` enum, `JuristicMember` junction,
+  `JuristicInvite`, `UserSession.activeJuristicId`, `AuditLog.juristicId`; removed
+  `SystemUser.juristicPersonId` FK. Migration: `20260616024209_juristic_multitenant`.
+  Auth: `switchContext()` in `AuthService` re-mints JWT in-place; `POST /api/auth/context`
+  endpoint; refresh carries over juristic context; `claimsFor` extended with
+  `activeJuristicId`/`juristicRole`. Guards: `JuristicContextGuard` (global, live
+  revocation check), `RequireJuristicRoleGuard`; decorators `@JuristicCtx()`,
+  `@RequireJuristicRole()`. New module `src/modules/juristic/` with 11 endpoints:
+  memberships, claim, accept invite, company detail, member CRUD, invite CRUD. DBD
+  provider extended with `isDirector()`. Data isolation in `my.service.ts` + controller
+  branches on `juristicContext`. Audit interceptor stamps `juristicId`. Swagger tag
+  added; `openapi.json` regenerated. Seed: `publicOwner` has OWNER on company[0] +
+  ADMIN on company[1]. Verified: `npm run build`, `npm test` (22/22 pass),
+  `npm run swagger:export` (no warnings).
+
+- **2026-06-15 (D5 — Profile & Tang Rat-prioritized identity binding super-plan)** — Phases 1-5: ... + **owner decision: plaintext citizen ID** in citizenId column (searchability + gov integration via TDE + RBAC + audit, **not** hashing). 
+
+  **DBA confusion concern addressed + Golden Rule exception exercised**: User explicitly said "i let you break the rule for this time to make schema is better". We renamed citizenIdHash → citizenId (column to citizen_id) with proper migration. Old name was confusing for DB officers. Schema now clean. Heavy comments + plan updated. All verification (lint/build/units 22/22, e2e) green. (6 + 7 + 8 remain.)
 - **2026-06-15 (public self-registration + password login)** — Added public
   sign-up: `POST /api/auth/register` (username/email/password → `public` role,
   bcrypt cost 12, auto-login) and `POST /api/auth/login` (password login for

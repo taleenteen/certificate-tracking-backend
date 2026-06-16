@@ -294,6 +294,47 @@
         ]
       }
     },
+    "/api/auth/context": {
+      "post": {
+        "description": "Re-mints the access token with juristic context claims (`activeJuristicId`, `juristicRole`). Pass `juristicId: null` to return to personal/user mode. Reuses the existing session; no new refresh token. The old access token JTI is revoked immediately.",
+        "operationId": "AuthController_switchContext",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchContextDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSwitchResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session not found or expired."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Switch session into a juristic company context (D6)",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/auth/reset-password": {
       "post": {
         "description": "Consumes the single-use token and sets the new password.",
@@ -465,6 +506,501 @@
         ]
       }
     },
+    "/api/juristic": {
+      "get": {
+        "description": "Lists all active company memberships for the current user. Use POST /auth/context with one of these juristicId values to switch into that company's session.",
+        "operationId": "JuristicController_getMyMemberships",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JuristicMembershipDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "My juristic memberships (context-switcher list)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/claim": {
+      "post": {
+        "description": "Verifies the caller's citizen ID against DBD records. On success, creates or upgrades a JuristicMember(OWNER) row and returns the company. Requires a verified citizen ID on the account (link Tang Rat first).",
+        "operationId": "JuristicController_claimCompany",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimJuristicDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Claimed as OWNER."
+          },
+          "403": {
+            "description": "Not a registered director in DBD."
+          },
+          "404": {
+            "description": "Juristic person not found."
+          },
+          "422": {
+            "description": "No verified citizen ID on account."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Claim a company as OWNER via DBD director verification",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/invites/{token}/accept": {
+      "post": {
+        "description": "Consumes the single-use invite token (from email / console log in mock). Token is the secret — email matching is not enforced. Single-use; 410 if already used or expired.",
+        "operationId": "JuristicController_acceptInvite",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already a member of this organization."
+          },
+          "410": {
+            "description": "Invite already used, revoked, or expired."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Accept an invite by token",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}": {
+      "get": {
+        "description": "Returns company info, your role, and member count. Does not require an active juristic context — membership is verified directly.",
+        "operationId": "JuristicController_getCompany",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicCompanyDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Company not found or not a member."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Company detail (must be a member)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/members": {
+      "get": {
+        "description": "Lists all members of the company. Requires ADMIN or OWNER juristic role in the active context (switch via POST /auth/context first).",
+        "operationId": "JuristicController_getMembers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JuristicMemberDetailDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not in active juristic context or insufficient role."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List members (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      },
+      "post": {
+        "description": "Adds a user who already has a verified citizen ID. No invite email is sent. Use POST /:id/invites for newcomers.",
+        "operationId": "JuristicController_directAddMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectAddMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No verified user found with that citizen ID."
+          },
+          "409": {
+            "description": "Already a member."
+          },
+          "422": {
+            "description": "Invalid citizen ID format."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Direct-add a member by citizen ID (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/members/{userId}": {
+      "patch": {
+        "description": "Change the juristic role or free-text position of a member. Cannot demote the only OWNER (422).",
+        "operationId": "JuristicController_updateMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Member not found."
+          },
+          "422": {
+            "description": "Cannot demote the only OWNER."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Update member role or position (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      },
+      "delete": {
+        "description": "Soft-deactivates the membership. Cannot remove the only OWNER (422).",
+        "operationId": "JuristicController_removeMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Member not found."
+          },
+          "422": {
+            "description": "Cannot remove the only OWNER."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Remove a member (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/invites": {
+      "post": {
+        "description": "Creates a single-use 7-day invite token. In development the token is printed to the console instead of emailed.",
+        "operationId": "JuristicController_inviteMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Send an email invite (ADMIN+, MOCK: console)",
+        "tags": [
+          "Juristic"
+        ]
+      },
+      "get": {
+        "operationId": "JuristicController_getInvites",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JuristicInviteDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List pending invites (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/invites/{inviteId}": {
+      "delete": {
+        "operationId": "JuristicController_revokeInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inviteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invite not found."
+          },
+          "422": {
+            "description": "Invite is no longer pending."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Revoke a pending invite (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
     "/api/my/licenses": {
       "get": {
         "description": "Returns the current user’s licenses. In `juristic` mode, a 404 with `{ found: false }` is returned when no juristic match exists.",
@@ -495,6 +1031,202 @@
           }
         ],
         "summary": "My licenses",
+        "tags": [
+          "My"
+        ]
+      }
+    },
+    "/api/my/profile": {
+      "get": {
+        "description": "Returns the current user’s profile with citizen verification status (Tang Rat is canonical/primary), linked identities, and actionable flags. citizenIdLast4 is display-only; raw national ID is never stored or returned.",
+        "operationId": "MyController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Profile for the authenticated user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found or soft-deleted."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Unified profile + linked identities (D5)",
+        "tags": [
+          "My"
+        ]
+      },
+      "patch": {
+        "description": "User-editable fields only. Email must be one of the known emails for this account or the current value.",
+        "operationId": "MyController_patchProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Edit display name / primary email / phone (self only)",
+        "tags": [
+          "My"
+        ]
+      }
+    },
+    "/api/my/credentials": {
+      "post": {
+        "description": "Allows a user who authenticated via Tang Rat to add password credentials for web fallback. Requires the account has no passwordHash yet (use change-password otherwise). Primary happy path for most users.",
+        "operationId": "MyController_addCredentials",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found."
+          },
+          "409": {
+            "description": "Username already taken."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Add username/password to a Tang Rat-primary account (primary two-way path)",
+        "tags": [
+          "My"
+        ]
+      }
+    },
+    "/api/my/identities/tang-rat": {
+      "post": {
+        "description": "Proof-based link. If the mToken resolves to a citizen ID already verified on another (Tang Rat) account, the current (domain) account is merged *into* the Tang Rat canonical. Domain-initiated merge is deliberately secondary and never compromises primary Tang Rat accounts.",
+        "operationId": "MyController_linkTangRat",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkTangRatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Link or merge completed; returns updated profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid mToken or inactive target."
+          },
+          "403": {
+            "description": "Account inactive or other permission issue."
+          },
+          "404": {
+            "description": "User not found."
+          },
+          "409": {
+            "description": "Citizen identity already linked to another account (or cross-tier)."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Link a Tang Rat identity (mToken proof) to current account (secondary/domain-first path)",
+        "tags": [
+          "My"
+        ]
+      },
+      "delete": {
+        "description": "Removes the tang_rat link(s). 422 if this would leave the account with no password and no tang_rat link.",
+        "operationId": "MyController_unlinkTangRat",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Unlinked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found."
+          },
+          "422": {
+            "description": "Cannot unlink the last remaining sign-in method."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Unlink Tang Rat identity (must retain at least one sign-in method)",
         "tags": [
           "My"
         ]
@@ -1633,6 +2365,10 @@
       "description": "Authenticated user self-service (licenses)"
     },
     {
+      "name": "Juristic",
+      "description": "Multi-tenant corporate portal: memberships, context, invites (D6)"
+    },
+    {
       "name": "Notifications",
       "description": "In-app notifications for the current user"
     },
@@ -1714,7 +2450,214 @@
         "type": "object",
         "properties": {}
       },
+      "SwitchContextDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ContextSwitchResponseDto": {
+        "type": "object",
+        "properties": {}
+      },
       "ResetPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "JuristicMembershipDto": {
+        "type": "object",
+        "properties": {
+          "juristicId": {
+            "type": "string"
+          },
+          "nameTh": {
+            "type": "string"
+          },
+          "nameEn": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "MEMBER"
+            ]
+          },
+          "position": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "juristicId",
+          "nameTh",
+          "role",
+          "joinedAt"
+        ]
+      },
+      "ClaimJuristicDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "JuristicSuccessDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "JuristicCompanyDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "nameTh": {
+            "type": "string"
+          },
+          "nameEn": {
+            "type": "string"
+          },
+          "juristicType": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "myRole": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "MEMBER"
+            ]
+          },
+          "myPosition": {
+            "type": "string"
+          },
+          "memberCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "registrationId",
+          "nameTh",
+          "myRole",
+          "memberCount"
+        ]
+      },
+      "JuristicMemberDetailDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "MEMBER"
+            ]
+          },
+          "position": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "fullName",
+          "role",
+          "isActive",
+          "joinedAt"
+        ]
+      },
+      "DirectAddMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "InviteMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "JuristicInviteDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "MEMBER"
+            ]
+          },
+          "position": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "status",
+          "expiresAt",
+          "createdAt"
+        ]
+      },
+      "ProfileResponseDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PatchProfileDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AddCredentialsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LinkTangRatDto": {
         "type": "object",
         "properties": {}
       },

@@ -11,7 +11,7 @@ import { Observable, switchMap } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SKIP_AUDIT_KEY } from '../decorators/skip-audit.decorator';
 
-const sensitive = /password|token|totp|secret/i;
+const sensitive = /password|token|totp|secret|citizenid|citizen_id|citizenId/i;
 
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact);
@@ -69,6 +69,7 @@ export class AuditInterceptor implements NestInterceptor {
         await this.prisma.auditLog.create({
           data: {
             userId: request.user?.sub,
+            juristicId: request.juristicContext?.juristicId ?? null,
             action,
             entityType: entitySegment ?? 'unknown',
             entityId:

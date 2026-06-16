@@ -27,6 +27,7 @@ import { JwtClaims } from '../../common/auth.types';
 import {
   AuthTokenResponseDto,
   ChangePasswordDto,
+  ContextSwitchResponseDto,
   ForgotPasswordDto,
   LoginDto,
   MessageResponseDto,
@@ -34,6 +35,7 @@ import {
   RegisterDto,
   ResetPasswordDto,
   SelfLoginDto,
+  SwitchContextDto,
   TangRatLoginDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
@@ -254,6 +256,31 @@ export class AuthController {
   @Post('forgot-password')
   forgot(@Body() dto: ForgotPasswordDto, @Ip() ipAddress: string) {
     return this.auth.forgotPassword(dto.username, ipAddress);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Switch session into a juristic company context (D6)',
+    description:
+      'Re-mints the access token with juristic context claims ' +
+      '(`activeJuristicId`, `juristicRole`). Pass `juristicId: null` to return ' +
+      'to personal/user mode. Reuses the existing session; no new refresh token. ' +
+      'The old access token JTI is revoked immediately.',
+  })
+  @ApiOkResponse({ type: ContextSwitchResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Session not found or expired.' })
+  @Post('context')
+  switchContext(
+    @CurrentUser() user: JwtClaims,
+    @Body() dto: SwitchContextDto,
+    @Req() request: Request,
+  ) {
+    return this.auth.switchContext(
+      user,
+      dto.juristicId ?? null,
+      this.metadata(request),
+    );
   }
 
   @Public()

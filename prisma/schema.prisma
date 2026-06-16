@@ -55,6 +55,25 @@ enum Agency {
   ACFS
 }
 
+enum ProfileChannel {
+  domain
+  tang_rat
+}
+
+enum JuristicRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
 model SystemUser {
   id                 String    @id @default(uuid()) @db.Uuid
   username           String?   @unique @db.VarChar(50)
@@ -62,10 +81,42 @@ model SystemUser {
   email              String?   @db.VarChar(150)
   fullName           String    @map("full_name") @db.VarChar(200)
   phone              String?   @db.VarChar(20)
+
+  // Verified national/citizen identity (from Tang Rat only).
+  //
+  // Owner decision (2026-06-15, exception authorized): Stored as **plaintext**
+  // (the raw normalized 13-digit Thai national ID).
+  //
+  // Purpose: searchability, data integrity, seamless integration with
+  // government API gateways.
+  //
+  // Security: Database TDE (at rest) + application RBAC + comprehensive audit
+  // logging. NOT protected by hashing.
+  //
+  // Field renamed from citizenIdHash → citizenId (and column from
+  // citizen_id_hash → citizen_id) with explicit owner permission to break the
+  // "never rename Prisma schema fields" Golden Rule, because the old name
+  // would confuse DB officers. This is a one-time authorized exception.
+  //
+  // Constraints & usage:
+  // - @unique ensures one verified citizen ID maps to exactly one account.
+  // - Application code must NEVER return the full value in user-facing APIs.
+  //   Only citizenIdVerified (boolean) + citizenIdLast4 are exposed publicly.
+  // - Always validate with isValidThaiCitizenId before writing.
+  citizenId           String?   @unique @map("citizen_id") @db.VarChar(64)
+
+  citizenIdVerifiedAt DateTime? @map("citizen_id_verified_at") @db.Timestamptz()
+
+  // Last 4 digits for display only ("เลขบัตร …1234"). Not sensitive on its own.
+  citizenIdLast4      String?   @map("citizen_id_last4") @db.VarChar(4)
+
+  // Which channel the profile was born from (analytics + UX defaults).
+  // Tang Rat is the primary / canonical path for the vast majority of users.
+  primaryChannel      ProfileChannel @default(domain) @map("primary_channel")
+
   roles              String[]  @default(["public"])
   agency             Agency?
   isActive           Boolean   @default(true) @map("is_active")
-  juristicPersonId   String?   @map("juristic_person_id") @db.Uuid
   lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz()
   failedLoginCount   Int       @default(0) @map("failed_login_count")
   lockedUntil        DateTime? @map("locked_until") @db.Timestamptz()
@@ -75,7 +126,6 @@ model SystemUser {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
-  juristicPerson  JuristicPerson?    @relation(fields: [juristicPersonId], references: [id])
   userZones       UserZone[]
   sessions        UserSession[]
   providerLinks   AuthProviderLink[]
@@ -88,6 +138,15 @@ model SystemUser {
   auditLogs       AuditLog[]
   notifications   Notification[]
   syncLogs        SyncLog[]
+  // For proof-based link/merge handshake (D5). See PLAN_PROFILE_IDENTITY_BINDING.md.
+  linkChallenges         AccountLinkChallenge[] @relation("LinkInitiator")
+  // D6: many-to-many juristic memberships
+  juristicMemberships    JuristicMember[]       @relation("JuristicMembership")
+  juristicInvitesSent    JuristicMember[]       @relation("JuristicInviter")
+  juristicInvitesCreated JuristicInvite[]       @relation("JuristicInviteCreator")
+  // D7: join request flow
+  juristicJoinRequests   JuristicJoinRequest[]  @relation("JoinRequester")
+  juristicJoinReviews    JuristicJoinRequest[]  @relation("JoinReviewer")
 
   @@index([agency])
   @@map("system_users")
@@ -138,6 +197,8 @@ model UserSession {
   isRevoked         Boolean      @default(false) @map("is_revoked")
   revokedAt         DateTime?    @map("revoked_at") @db.Timestamptz()
   revokeReason      String?      @map("revoke_reason") @db.VarChar(50)
+  // D6: active juristic context (null = personal/user mode)
+  activeJuristicId  String?      @map("active_juristic_id") @db.Uuid
   createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 
   user SystemUser @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -156,6 +217,9 @@ model AuthProviderLink {
   linkedAt      DateTime     @default(now()) @map("linked_at") @db.Timestamptz()
   lastLoginAt   DateTime?    @map("last_login_at") @db.Timestamptz()
   isActive      Boolean      @default(true) @map("is_active")
+  // Recorded from Tang Rat at link/verify time (for provenance/display in profile).
+  providerPhone String?   @map("provider_phone") @db.VarChar(20)
+  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz() // set for tang_rat links
 
   user SystemUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -188,10 +252,83 @@ model JuristicPerson {
   address        String?  @db.Text
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  users      SystemUser[]
-  businesses Business[]
+  members      JuristicMember[]
+  invites      JuristicInvite[]
+  joinRequests JuristicJoinRequest[]
+  businesses   Business[]
 
   @@map("juristic_persons")
+}
+
+model JuristicMember {
+  id               String       @id @default(uuid()) @db.Uuid
+  juristicPersonId String       @map("juristic_person_id") @db.Uuid
+  userId           String       @map("user_id") @db.Uuid
+  role             JuristicRole @default(MEMBER)
+  position         String?      @db.VarChar(100)
+  isActive         Boolean      @default(true) @map("is_active")
+  invitedById      String?      @map("invited_by_id") @db.Uuid
+  joinedAt         DateTime     @default(now()) @map("joined_at") @db.Timestamptz()
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  juristicPerson JuristicPerson @relation(fields: [juristicPersonId], references: [id], onDelete: Cascade)
+  user           SystemUser     @relation("JuristicMembership", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy      SystemUser?    @relation("JuristicInviter", fields: [invitedById], references: [id])
+
+  @@unique([juristicPersonId, userId])
+  @@index([userId])
+  @@index([juristicPersonId])
+  @@map("juristic_members")
+}
+
+model JuristicInvite {
+  id               String       @id @default(uuid()) @db.Uuid
+  juristicPersonId String       @map("juristic_person_id") @db.Uuid
+  email            String       @db.VarChar(150)
+  role             JuristicRole @default(MEMBER)
+  position         String?      @db.VarChar(100)
+  tokenHash        String       @unique @map("token_hash") @db.VarChar(255)
+  invitedById      String       @map("invited_by_id") @db.Uuid
+  status           String       @default("pending") @db.VarChar(20)
+  expiresAt        DateTime     @map("expires_at") @db.Timestamptz()
+  acceptedAt       DateTime?    @map("accepted_at") @db.Timestamptz()
+  acceptedByUserId String?      @map("accepted_by_user_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+
+  juristicPerson JuristicPerson @relation(fields: [juristicPersonId], references: [id], onDelete: Cascade)
+  invitedBy      SystemUser     @relation("JuristicInviteCreator", fields: [invitedById], references: [id])
+
+  @@index([juristicPersonId])
+  @@index([email])
+  @@map("juristic_invites")
+}
+
+model JuristicJoinRequest {
+  id                String            @id @default(uuid()) @db.Uuid
+  juristicPersonId  String            @map("juristic_person_id") @db.Uuid
+  userId            String            @map("user_id") @db.Uuid
+  isFirstOwnerClaim Boolean           @default(false) @map("is_first_owner_claim")
+  requestedRole     JuristicRole      @default(MEMBER) @map("requested_role")
+  requestedPosition String?           @map("requested_position") @db.VarChar(100)
+  message           String?           @db.Text
+  status            JoinRequestStatus @default(PENDING)
+  grantedRole       JuristicRole?     @map("granted_role")
+  reviewedById      String?           @map("reviewed_by_id") @db.Uuid
+  reviewedAt        DateTime?         @map("reviewed_at") @db.Timestamptz()
+  reviewNote        String?           @map("review_note") @db.Text
+  expiresAt         DateTime          @map("expires_at") @db.Timestamptz()
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz()
+
+  juristicPerson JuristicPerson @relation(fields: [juristicPersonId], references: [id], onDelete: Cascade)
+  user           SystemUser     @relation("JoinRequester", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy     SystemUser?    @relation("JoinReviewer", fields: [reviewedById], references: [id])
+
+  @@index([juristicPersonId, status])
+  @@index([userId, status])
+  @@index([status, isFirstOwnerClaim])
+  @@map("juristic_join_requests")
 }
 
 model Business {
@@ -387,6 +524,8 @@ model Notification {
 model AuditLog {
   id          String   @id @default(uuid()) @db.Uuid
   userId      String?  @map("user_id") @db.Uuid
+  // D6: org context when the action was performed in juristic mode
+  juristicId  String?  @map("juristic_id") @db.Uuid
   action      String   @db.VarChar(30)
   entityType  String   @map("entity_type") @db.VarChar(50)
   entityId    String?  @map("entity_id") @db.Uuid
@@ -399,6 +538,7 @@ model AuditLog {
   user SystemUser? @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
+  @@index([juristicId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
 }
@@ -417,4 +557,25 @@ model SyncLog {
 
   @@index([agency, startedAt])
   @@map("sync_logs")
+}
+
+// AccountLinkChallenge (D5 proof-based merge handshake).
+// Deferred for sync path in initial impl (see super-plan); table created for forward compat.
+model AccountLinkChallenge {
+  id            String   @id @default(uuid()) @db.Uuid
+  // The account that initiated linking (the authenticated session's user).
+  initiatorId   String   @map("initiator_id") @db.Uuid
+  // The candidate account to absorb/merge (matched by citizenId or email).
+  targetId      String?  @map("target_id") @db.Uuid
+  method        String   @db.VarChar(20)   // 'password' | 'mtoken'
+  status        String   @default("pending") @db.VarChar(20) // pending|confirmed|expired|failed
+  attempts      Int      @default(0)
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz()
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz()
+
+  initiator SystemUser @relation("LinkInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+
+  @@index([initiatorId])
+  @@map("account_link_challenges")
 }

@@ -15,8 +15,9 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return welcome page HTML', () => {
+      expect(appController.getWelcomePage()).toContain('<!DOCTYPE html>');
+      expect(appController.getWelcomePage()).toContain('E-LICENSE PLATFORM');
     });
   });
 });

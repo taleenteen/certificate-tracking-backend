@@ -3,9 +3,11 @@ import {
   AuthProvider,
   Business,
   InspectionTask,
+  JuristicRole,
   License,
   LicenseStatus,
   PrismaClient,
+  ProfileChannel,
   ReportResult,
   SyncStatus,
   TaskStatus,
@@ -13,6 +15,7 @@ import {
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
+import { storeCitizenId, isValidThaiCitizenId, last4 } from '../src/common/crypto/citizen-id';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
@@ -39,6 +42,10 @@ async function resetDatabase() {
     prisma.authProviderLink.deleteMany(),
     prisma.userZone.deleteMany(),
     prisma.syncLog.deleteMany(),
+    prisma.accountLinkChallenge.deleteMany(),
+    prisma.juristicJoinRequest.deleteMany(),
+    prisma.juristicInvite.deleteMany(),
+    prisma.juristicMember.deleteMany(),
     prisma.systemUser.deleteMany(),
     prisma.juristicPerson.deleteMany(),
     prisma.zone.deleteMany(),
@@ -197,6 +204,15 @@ async function main() {
         roles: ['public'],
       },
     }),
+    // D7: join-requester has a verified citizenId but no memberships
+    prisma.systemUser.create({
+      data: {
+        username: 'join-requester',
+        fullName: 'ผู้ขอเข้าร่วมบริษัท',
+        roles: ['public'],
+        primaryChannel: ProfileChannel.tang_rat,
+      },
+    }),
   ]);
   const [
     admin,
@@ -207,6 +223,7 @@ async function main() {
     acfsInspector1,
     acfsInspector2,
     publicOwner,
+    joinRequester,
   ] = users;
 
   // A plain ADMIN account (below super_admin) for testing the role hierarchy.
@@ -221,6 +238,49 @@ async function main() {
       mustChangePassword: false,
     },
   });
+
+  // D5: assign verified citizen data (Tang Rat primary) to all non-admin-tier users
+  // that will receive tang_rat provider links. Use crypto helpers so hashes are
+  // reproducible with the dev pepper and only valid IDs are stored. Admin tier
+  // never gets citizen identity (D3 + D5).
+  const candidateCitizenIds = [
+    '1000003703701',
+    '1000016049371',
+    '1000028395041',
+    '1000033333309',
+    '1000046913546',
+    '1000050617247',
+    '1000065432051',
+    '1000069135752',
+  ]; // pre-validated with isValidThaiCitizenId (Tang Rat primary for D5)
+
+  const tangUsers = [
+    diwSupervisor,
+    acfsSupervisor,
+    diwInspector1,
+    diwInspector2,
+    acfsInspector1,
+    acfsInspector2,
+    publicOwner,
+    joinRequester,
+  ];
+  for (let i = 0; i < tangUsers.length; i++) {
+    const u = tangUsers[i];
+    const cid = candidateCitizenIds[i % candidateCitizenIds.length];
+    if (cid) {
+      // Store as plaintext (owner decision 2026-06-15): searchability + gov integration.
+      // Security via TDE + RBAC + audit (no irreversible hash).
+      await prisma.systemUser.update({
+        where: { id: u.id },
+        data: {
+          citizenId: storeCitizenId(cid),
+          citizenIdVerifiedAt: new Date(),
+          citizenIdLast4: last4(cid),
+          primaryChannel: ProfileChannel.tang_rat,
+        },
+      });
+    }
+  }
 
   await prisma.userZone.createMany({
     data: [
@@ -252,6 +312,27 @@ async function main() {
       }),
     ),
   );
+
+  // D6: give publicOwner OWNER on company[0] and ADMIN on company[1]
+  // so context-switching is demonstrable with one user across two companies.
+  await prisma.juristicMember.createMany({
+    data: [
+      {
+        juristicPersonId: juristicPersons[0].id,
+        userId: publicOwner.id,
+        role: JuristicRole.OWNER,
+        position: 'กรรมการผู้จัดการ',
+        isActive: true,
+      },
+      {
+        juristicPersonId: juristicPersons[1].id,
+        userId: publicOwner.id,
+        role: JuristicRole.ADMIN,
+        position: 'Compliance Officer',
+        isActive: true,
+      },
+    ],
+  });
 
   const businesses: Business[] = [];
   for (let index = 0; index < 20; index += 1) {
@@ -420,11 +501,13 @@ async function main() {
   }
 
   await prisma.authProviderLink.createMany({
-    data: users.slice(1).map((user) => ({
+    data: users.slice(1).map((user, idx) => ({
       userId: user.id,
       provider: AuthProvider.tang_rat,
       providerSub: `mock-sub-${user.username}`,
       providerName: user.fullName,
+      providerPhone: `08${String(10000000 + idx).padStart(8, '0')}`,
+      verifiedAt: new Date(),
     })),
   });
 

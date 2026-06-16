@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
   Matches,
   MaxLength,
@@ -182,6 +183,13 @@ export class AuthTokenResponseDto {
   refreshToken!: string;
   /** Minimal identity for the client to render the session. */
   user!: AuthUserDto;
+  /**
+   * D5 (secondary path hint): when a Tang Rat login or register detects an email
+   * match with a password account, this non-blocking suggestion is returned so the
+   * (rarer) domain-first user can complete proof-based link from /my/profile.
+   * Primary Tang Rat users almost never see this.
+   */
+  linkSuggestion?: { type: 'email_match'; maskedEmail: string };
 }
 
 export class PasswordChangeRequiredResponseDto {
@@ -194,4 +202,23 @@ export class PasswordChangeRequiredResponseDto {
 export class MessageResponseDto {
   /** Operation outcome flag. */
   success!: boolean;
+}
+
+export class SwitchContextDto {
+  /**
+   * UUID of the juristic person to activate, or `null` to return to user mode.
+   * @example "7f3e1f9a-5c3b-4d7e-a8b1-2f0d6e9c4a1b"
+   */
+  @IsOptional()
+  @IsUUID()
+  juristicId?: string | null;
+}
+
+export class ContextSwitchResponseDto {
+  /** Fresh RS256 access JWT with updated juristic context claims. */
+  accessToken!: string;
+  /** Minimal identity for the client. */
+  user!: AuthUserDto;
+  /** The active juristic person UUID, or null if switched back to user mode. */
+  activeJuristicId!: string | null;
 }

@@ -41,6 +41,14 @@ export function buildSwaggerConfig() {
     .addTag('Licenses', 'Public license type, detail, and QR verification')
     .addTag('Businesses', 'Public business search, detail, and map')
     .addTag('My', 'Authenticated user self-service (licenses)')
+    .addTag(
+      'Juristic',
+      'Multi-tenant corporate portal: memberships, context, invites (D6)',
+    )
+    .addTag(
+      'Juristic Requests',
+      'Self-service join request flow: search, submit, approve, reject (D7)',
+    )
     .addTag('Notifications', 'In-app notifications for the current user')
     .addTag('Inspection', 'Inspection tasks and reports state machine')
     .addTag('Dashboards', 'Role-specific aggregate dashboards')

@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BusinessModule } from './modules/business/business.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { ClientTypeGuard } from './common/guards/client-type.guard';
+import { JuristicContextGuard } from './common/guards/juristic-context.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ScopeGuard } from './common/guards/scope.guard';
@@ -18,6 +19,7 @@ import { ExportModule } from './modules/export/export.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { InspectionModule } from './modules/inspection/inspection.module';
 import { LicenseModule } from './modules/license/license.module';
+import { JuristicModule } from './modules/juristic/juristic.module';
 import { MyModule } from './modules/my/my.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -35,6 +37,7 @@ import { ZoneModule } from './modules/zone/zone.module';
     AuthModule,
     LicenseModule,
     BusinessModule,
+    JuristicModule,
     MyModule,
     NotificationModule,
     InspectionModule,
@@ -52,6 +55,7 @@ import { ZoneModule } from './modules/zone/zone.module';
     { provide: APP_GUARD, useClass: ClientTypeGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ScopeGuard },
+    { provide: APP_GUARD, useClass: JuristicContextGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })

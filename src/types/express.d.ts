@@ -1,4 +1,8 @@
-import type { JwtClaims, RequestScope } from '../common/auth.types';
+import type {
+  JuristicContext,
+  JwtClaims,
+  RequestScope,
+} from '../common/auth.types';
 
 declare global {
   namespace Express {
@@ -7,6 +11,7 @@ declare global {
     interface Request {
       user?: JwtClaims;
       scope?: RequestScope | null;
+      juristicContext?: JuristicContext | null;
     }
   }
 }
