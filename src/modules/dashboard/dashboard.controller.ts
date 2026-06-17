@@ -17,30 +17,18 @@ import { DashboardService } from './dashboard.service';
 export class DashboardController {
   constructor(private readonly dashboards: DashboardService) {}
 
-  @Roles('inspector')
+  @Roles('officer')
   @ApiOperation({
-    summary: 'Inspector dashboard',
+    summary: 'Officer dashboard',
     description:
-      'Counts (pending, in-progress, returned, completed this month) and the ' +
-      '5 most recent tasks for the current inspector.',
+      'Combined personal task counts (assigned to me) and zone-level ' +
+      'aggregates (task counts by status, compliance rate) scoped to the ' +
+      "officer's zones + agency.",
   })
-  @ApiOkResponse({ description: 'Inspector dashboard aggregates.' })
-  @Get('inspector')
-  inspector(@CurrentUser() user: JwtClaims) {
-    return this.dashboards.inspector(user.sub);
-  }
-
-  @Roles('supervisor')
-  @ApiOperation({
-    summary: 'Supervisor dashboard',
-    description:
-      'Zone summary, pending review count, task counts by status, and ' +
-      'compliance rate — scoped to the supervisor’s zones + agency.',
-  })
-  @ApiOkResponse({ description: 'Supervisor dashboard aggregates.' })
-  @Get('supervisor')
-  supervisor(@Req() request: Request) {
-    return this.dashboards.supervisor(request.scope!);
+  @ApiOkResponse({ description: 'Officer dashboard aggregates.' })
+  @Get('officer')
+  officer(@CurrentUser() user: JwtClaims, @Req() request: Request) {
+    return this.dashboards.officer(user.sub, request.scope!);
   }
 
   @Roles('admin')

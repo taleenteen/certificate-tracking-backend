@@ -47,11 +47,11 @@ import { InspectionService } from './inspection.service';
 export class InspectionController {
   constructor(private readonly inspections: InspectionService) {}
 
-  @Roles('inspector', 'supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'List inspection tasks (scoped)',
     description:
-      'Inspector sees tasks assigned to them; supervisor sees tasks in their ' +
+      'Officer sees all tasks in their zones + agency (full scope) ' +
       'zones + agency. Optional `status` filter.',
   })
   @ApiOkResponse({
@@ -66,7 +66,7 @@ export class InspectionController {
     return this.inspections.list(user, request.scope!, query.status);
   }
 
-  @Roles('inspector', 'supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'Get an inspection task (scoped)',
     description:
@@ -85,11 +85,11 @@ export class InspectionController {
     return this.inspections.findTask(id, user, request.scope!);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
-    summary: 'Create an inspection task (supervisor/admin)',
+    summary: 'Create an inspection task (officer/admin)',
     description:
-      'Assignee must hold the inspector role, share a zone with the business, ' +
+      'Assignee must be an officer, share a zone with the business, ' +
       'and match the agency. Rejected (409) if the assignee owns the business ' +
       '(conflict of interest). Generates a sequential `T-YYYY-NNNN` number and ' +
       'notifies the assignee.',
@@ -109,9 +109,9 @@ export class InspectionController {
     return this.inspections.createTask(dto, user, request.scope!);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
-    summary: 'Assign an inspector to a WAITING_ASSIGNMENT task (supervisor/admin)',
+    summary: 'Assign an inspector to a WAITING_ASSIGNMENT task (officer/admin)',
     description:
       'Transitions WAITING_ASSIGNMENT → ASSIGNED, sets the assignee, and notifies them.',
   })
@@ -129,7 +129,7 @@ export class InspectionController {
     return this.inspections.assignTask(id, dto.assignedTo, user, request.scope!);
   }
 
-  @Roles('inspector')
+  @Roles('officer')
   @ApiOperation({
     summary: 'Start a task (assignee)',
     description:
@@ -144,9 +144,9 @@ export class InspectionController {
     return this.inspections.startTask(id, user);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
-    summary: 'Cancel a task (supervisor/admin)',
+    summary: 'Cancel a task (officer/admin)',
     description: 'Only from ASSIGNED or IN_PROGRESS. Requires a reason.',
   })
   @ApiParam({ name: 'id', description: 'Task uuid', format: 'uuid' })
@@ -162,7 +162,7 @@ export class InspectionController {
     return this.inspections.cancelTask(id, dto.reason, user, request.scope!);
   }
 
-  @Roles('inspector')
+  @Roles('officer')
   @ApiOperation({
     summary: 'Update a draft report (owner)',
     description:
@@ -180,7 +180,7 @@ export class InspectionController {
     return this.inspections.updateReport(id, user.sub, dto);
   }
 
-  @Roles('inspector')
+  @Roles('officer')
   @ApiOperation({
     summary: 'Upload evidence file (owner)',
     description:
@@ -214,7 +214,7 @@ export class InspectionController {
     return this.inspections.uploadEvidence(id, user.sub, file);
   }
 
-  @Roles('inspector')
+  @Roles('officer')
   @ApiOperation({
     summary: 'Delete an evidence file (owner)',
     description: 'Allowed only while the report is a draft or RETURNED.',
@@ -232,12 +232,12 @@ export class InspectionController {
     return this.inspections.deleteEvidence(id, docId, user.sub);
   }
 
-  @Roles('inspector')
+  @Roles('officer')
   @ApiOperation({
     summary: 'Submit a report (owner)',
     description:
       'Requires a non-null result. Sets the report non-draft, transitions the ' +
-      'task to PENDING_REVIEW, and notifies supervisors in the zone + agency.',
+      'task to PENDING_REVIEW, and notifies officers in the zone + agency.',
   })
   @ApiParam({ name: 'id', description: 'Report uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The submitted report.' })
@@ -249,13 +249,13 @@ export class InspectionController {
     return this.inspections.submitReport(id, user.sub);
   }
 
-  @Roles('supervisor')
+  @Roles('officer')
   @ApiOperation({
-    summary: 'Approve a report (supervisor)',
+    summary: 'Approve a report (officer)',
     description:
       'Transitions the task to APPROVED. Side effects: FAILED result ' +
       'suspends the license; a PASSED result reactivates a previously ' +
-      'suspended one. Notifies the inspector.',
+      'suspended one. Notifies the officer.',
   })
   @ApiParam({ name: 'id', description: 'Report uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The approved report.' })
@@ -270,12 +270,12 @@ export class InspectionController {
     return this.inspections.approveReport(id, user, request.scope!);
   }
 
-  @Roles('supervisor')
+  @Roles('officer')
   @ApiOperation({
-    summary: 'Return a report for fixes (supervisor)',
+    summary: 'Return a report for fixes (officer)',
     description:
       'Requires a review comment. Transitions the task to RETURNED and ' +
-      'notifies the inspector.',
+      'notifies the officer.',
   })
   @ApiParam({ name: 'id', description: 'Report uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The returned report.' })

@@ -14,6 +14,11 @@ import type { DbdProvider } from '../external/dbd.provider';
 import type { TangRatProvider } from '../external/tangrat.provider';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const LICENSE_INCLUDE = {
+  licenseType: { include: { agency: { select: { code: true } } } },
+  business: true,
+} as const;
+
 @Injectable()
 export class MyService {
   constructor(
@@ -23,24 +28,20 @@ export class MyService {
     private readonly auth: AuthService, // for reusable D5 link/merge (Tang Rat canonical always wins)
   ) {}
 
-  getLicensesPersonal(userId: string) {
-    return this.prisma.license.findMany({
-      where: {
-        deletedAt: null,
-        business: { ownerUserId: userId, deletedAt: null },
-      },
-      include: { licenseType: true, business: true },
+  async getLicensesPersonal(userId: string) {
+    const rows = await this.prisma.license.findMany({
+      where: { deletedAt: null, business: { ownerUserId: userId, deletedAt: null } },
+      include: LICENSE_INCLUDE,
     });
+    return rows.map((r) => this.toLicenseDto(r));
   }
 
-  getLicensesByJuristicId(juristicPersonId: string) {
-    return this.prisma.license.findMany({
-      where: {
-        deletedAt: null,
-        business: { deletedAt: null, juristicPersonId },
-      },
-      include: { licenseType: true, business: true },
+  async getLicensesByJuristicId(juristicPersonId: string) {
+    const rows = await this.prisma.license.findMany({
+      where: { deletedAt: null, business: { deletedAt: null, juristicPersonId } },
+      include: LICENSE_INCLUDE,
     });
+    return rows.map((r) => this.toLicenseDto(r));
   }
 
   async getLicensesJuristic(user: JwtClaims) {
@@ -50,13 +51,81 @@ export class MyService {
       where: { registrationId: match.registrationId },
     });
     if (!juristicPerson) throw new NotFoundException({ found: false });
-    return this.prisma.license.findMany({
-      where: {
-        deletedAt: null,
-        business: { deletedAt: null, juristicPersonId: juristicPerson.id },
-      },
-      include: { licenseType: true, business: true },
+    const rows = await this.prisma.license.findMany({
+      where: { deletedAt: null, business: { deletedAt: null, juristicPersonId: juristicPerson.id } },
+      include: LICENSE_INCLUDE,
     });
+    return rows.map((r) => this.toLicenseDto(r));
+  }
+
+  // MOCK: replace in UAT — dev-only endpoint to seed a near-expiry license
+  async createDevLicense(userId: string) {
+    let business = await this.prisma.business.findFirst({
+      where: { ownerUserId: userId, deletedAt: null },
+    });
+
+    if (!business) {
+      const zone = await this.prisma.zone.findFirst();
+      if (!zone) throw new NotFoundException('No zones in DB — run seed first');
+      business = await this.prisma.business.create({
+        data: {
+          nameTh: 'บริษัท ทดสอบระบบ จำกัด',
+          ownerUserId: userId,
+          zoneId: zone.id,
+          address: '99/1 ถ.ทดสอบ แขวงทดสอบ เขตทดสอบ',
+          province: 'กรุงเทพมหานคร',
+        },
+      });
+    }
+
+    const types = await this.prisma.licenseType.findMany({
+      where: { isActive: true },
+      include: { agency: { select: { code: true } } },
+    });
+    if (!types.length) throw new NotFoundException('No active license types — run seed first');
+    const lt = types[Math.floor(Math.random() * types.length)];
+
+    const daysLeft = 5 + Math.floor(Math.random() * 20); // 5–24 days — always "expiring soon"
+    const now = new Date();
+    const expireDate = new Date(now.getTime() + daysLeft * 86_400_000);
+    const licenseNo = `DEV-${Date.now().toString(36).toUpperCase()}`;
+
+    const license = await this.prisma.license.create({
+      data: {
+        licenseNo,
+        businessId: business.id,
+        licenseTypeId: lt.id,
+        status: 'ACTIVE',
+        issueDate: now,
+        expireDate,
+      },
+      include: LICENSE_INCLUDE,
+    });
+
+    return this.toLicenseDto(license);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private toLicenseDto(license: any) {
+    return {
+      id: license.id as string,
+      licenseNumber: license.licenseNo as string,
+      issuedAt: (license.issueDate as Date).toISOString(),
+      expiresAt: license.expireDate ? (license.expireDate as Date).toISOString() : null,
+      status: license.status as string,
+      licenseType: {
+        id: license.licenseType.id as string,
+        code: license.licenseType.code as string,
+        nameTh: license.licenseType.nameTh as string,
+        nameEn: (license.licenseType.nameEn ?? '') as string,
+        agency: (license.licenseType.agency?.code ?? '') as string,
+      },
+      business: {
+        id: license.business.id as string,
+        nameTh: license.business.nameTh as string,
+        registrationId: '',
+      },
+    };
   }
 
   // ───────────────────────── D5 (Tang Rat primary) profile & binding ─────────────────────────

@@ -13,45 +13,45 @@ export interface TangRatProvider {
 }
 
 const identities: Record<string, TangRatIdentity> = {
-  'mock-inspector-1': {
-    sub: 'mock-sub-inspector-1',
-    fullName: 'ผู้ตรวจ DIW หนึ่ง',
-    email: 'inspector1.diw@example.test',
+  'mock-officer-1': {
+    sub: 'mock-sub-officer-1',
+    fullName: 'เจ้าหน้าที่ DIW หนึ่ง',
+    email: 'officer1.diw@example.test',
     phone: '0811111111',
     citizenId: '1000003703701', // MOCK: replace in UAT (validated by isValidThaiCitizenId; Tang Rat primary per D5)
   },
-  'mock-inspector-2': {
-    sub: 'mock-sub-inspector-2',
-    fullName: 'ผู้ตรวจ DIW สอง',
-    email: 'inspector2.diw@example.test',
+  'mock-officer-2': {
+    sub: 'mock-sub-officer-2',
+    fullName: 'เจ้าหน้าที่ DIW สอง',
+    email: 'officer2.diw@example.test',
     phone: '0811111112',
     citizenId: '1000016049371',
   },
-  'mock-inspector-3': {
-    sub: 'mock-sub-inspector-3',
-    fullName: 'ผู้ตรวจ ACFS หนึ่ง',
-    email: 'inspector1.acfs@example.test',
+  'mock-officer-3': {
+    sub: 'mock-sub-officer-3',
+    fullName: 'เจ้าหน้าที่ ACFS หนึ่ง',
+    email: 'officer1.acfs@example.test',
     phone: '0822222221',
     citizenId: '1000028395041',
   },
-  'mock-inspector-4': {
-    sub: 'mock-sub-inspector-4',
-    fullName: 'ผู้ตรวจ ACFS สอง',
-    email: 'inspector2.acfs@example.test',
+  'mock-officer-4': {
+    sub: 'mock-sub-officer-4',
+    fullName: 'เจ้าหน้าที่ ACFS สอง',
+    email: 'officer2.acfs@example.test',
     phone: '0822222222',
     citizenId: '1000033333309',
   },
-  'mock-supervisor-diw': {
-    sub: 'mock-sub-supervisor-diw',
-    fullName: 'หัวหน้าผู้ตรวจ DIW',
-    email: 'supervisor.diw@example.test',
+  'mock-officer-diw': {
+    sub: 'mock-sub-officer-diw',
+    fullName: 'เจ้าหน้าที่อาวุโส DIW',
+    email: 'officer.diw@example.test',
     phone: '0833333333',
     citizenId: '1000046913546',
   },
-  'mock-supervisor-acfs': {
-    sub: 'mock-sub-supervisor-acfs',
-    fullName: 'หัวหน้าผู้ตรวจ ACFS',
-    email: 'supervisor.acfs@example.test',
+  'mock-officer-acfs': {
+    sub: 'mock-sub-officer-acfs',
+    fullName: 'เจ้าหน้าที่อาวุโส ACFS',
+    email: 'officer.acfs@example.test',
     phone: '0844444444',
     citizenId: '1000050617247',
   },

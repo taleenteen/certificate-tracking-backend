@@ -106,7 +106,7 @@ export class ExportService {
       taskNo: report.task.taskNo,
       business: report.task.business.nameTh,
       licenseNo: report.task.license?.licenseNo ?? '',
-      inspector: report.inspector.fullName,
+      officer: report.inspector.fullName,
       result: report.result ?? '',
       score: report.score ?? '',
       summaryNote: report.summaryNote ?? '',

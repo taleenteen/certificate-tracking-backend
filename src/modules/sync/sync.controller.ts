@@ -31,7 +31,7 @@ import { SyncService } from './sync.service';
 export class SyncController {
   constructor(private readonly sync: SyncService) {}
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'Trigger an agency sync',
     description:
@@ -77,7 +77,7 @@ export class SyncController {
     return this.sync.importDiw(file, user.sub);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'Latest sync status per agency',
     description: 'Returns the most recent sync log for each agency.',

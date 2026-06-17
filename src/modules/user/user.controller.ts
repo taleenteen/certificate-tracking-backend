@@ -37,11 +37,11 @@ import { UserService } from './user.service';
 export class UserController {
   constructor(private readonly users: UserService) {}
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'List users',
     description:
-      'Admin sees all users; supervisor sees only their own agency. Filter by ' +
+      'Admin sees all users; officer sees only their own agency. Filter by ' +
       'role / zone / status / free-text query.',
   })
   @ApiOkResponse({ description: 'Matching users.' })
@@ -78,7 +78,7 @@ export class UserController {
     return this.users.updateRoles(id, dto.roles, user);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'Set user agency',
     description:
@@ -86,7 +86,7 @@ export class UserController {
   })
   @ApiParam({ name: 'id', description: 'User uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The updated user.' })
-  @ApiForbiddenResponse({ description: 'Cross-agency change by a supervisor.' })
+  @ApiForbiddenResponse({ description: 'Cross-agency change by a officer.' })
   @Patch(':id/agency')
   agency(
     @Param('id') id: string,
@@ -96,7 +96,7 @@ export class UserController {
     return this.users.updateAgency(id, dto.agencyId, user);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'Replace a user’s zones',
     description:

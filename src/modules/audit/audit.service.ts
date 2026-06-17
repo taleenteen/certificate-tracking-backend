@@ -21,7 +21,7 @@ export class AuditService {
             }
           : undefined,
       // Admin sees all. Supervisor is scoped to their own agency AND zones:
-      // only audit rows produced by users sharing one of the supervisor's zones.
+      // only audit rows produced by users sharing one of the officer's zones.
       user: isAdminTier(user.roles)
         ? undefined
         : {

@@ -52,7 +52,7 @@ export function buildSwaggerConfig() {
     .addTag('Notifications', 'In-app notifications for the current user')
     .addTag('Inspection', 'Inspection tasks and reports state machine')
     .addTag('Dashboards', 'Role-specific aggregate dashboards')
-    .addTag('Users', 'User administration (admin / supervisor)')
+    .addTag('Users', 'User administration (admin / officer)')
     .addTag('Zones', 'Zone master data')
     .addTag('Sync', 'Agency data sync and CSV import')
     .addTag('Audit', 'Audit log listing')

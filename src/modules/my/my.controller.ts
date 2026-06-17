@@ -48,6 +48,13 @@ class MyLicensesQuery {
 export class MyController {
   constructor(private readonly myService: MyService) {}
 
+  @ApiOperation({ summary: '[DEV] Create a test license expiring within 30 days for the current user' })
+  @ApiOkResponse({ description: 'Newly created dev license.' })
+  @Post('dev/seed-license')
+  createDevLicense(@CurrentUser() user: JwtClaims) {
+    return this.myService.createDevLicense(user.sub);
+  }
+
   @ApiOperation({
     summary: 'My licenses',
     description:

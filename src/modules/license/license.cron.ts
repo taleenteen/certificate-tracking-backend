@@ -37,7 +37,7 @@ export class LicenseCron {
             where: {
               deletedAt: null,
               isActive: true,
-              roles: { has: 'inspector' },
+              roles: { has: 'officer' },
               agencyId: license.licenseType.agencyId,
               userZones: { some: { zoneId: license.business.zoneId } },
             },
@@ -89,7 +89,7 @@ export class LicenseCron {
         where: {
           deletedAt: null,
           isActive: true,
-          roles: { has: 'supervisor' },
+          roles: { has: 'officer' },
           agencyId: license.licenseType.agencyId,
           userZones: { some: { zoneId: license.business.zoneId } },
         },

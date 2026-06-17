@@ -12,7 +12,7 @@ import {
 export class UserQueryDto {
   /** Filter by role. */
   @IsOptional()
-  @IsIn(['public', 'inspector', 'supervisor', 'admin'])
+  @IsIn(['public', 'officer', 'admin'])
   role?: string;
 
   /** Filter by assigned zone (uuid). */
@@ -55,12 +55,12 @@ export class CreateUserDto {
   phone?: string;
 
   /**
-   * Roles to grant. `inspector`/`supervisor` for admin; `admin` for super_admin only.
-   * @example ["inspector"]
+   * Roles to grant. `officer`/`officer` for admin; `admin` for super_admin only.
+   * @example ["officer"]
    */
   @IsArray()
   @ArrayNotEmpty()
-  @IsIn(['inspector', 'supervisor', 'admin'], { each: true })
+  @IsIn(['officer', 'admin'], { each: true })
   roles!: string[];
 
   /** Owning agency (UUID of the Agency record). */
@@ -76,12 +76,12 @@ export class CreateUserDto {
 export class UpdateRolesDto {
   /**
    * Replacement role set. Only a super_admin may assign `admin`/`super_admin`;
-   * an admin may assign `public`/`inspector`/`supervisor`.
-   * @example ["supervisor","inspector"]
+   * an admin may assign `public`/`officer`/`officer`.
+   * @example ["officer","officer"]
    */
   @IsArray()
   @ArrayNotEmpty()
-  @IsIn(['public', 'inspector', 'supervisor', 'admin', 'super_admin'], {
+  @IsIn(['public', 'officer', 'admin', 'super_admin'], {
     each: true,
   })
   roles!: string[];

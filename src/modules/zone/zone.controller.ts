@@ -20,10 +20,10 @@ import { ZoneService } from './zone.service';
 export class ZoneController {
   constructor(private readonly zones: ZoneService) {}
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
     summary: 'List zones',
-    description: 'Admin sees all zones; supervisor sees their own zones.',
+    description: 'Admin sees all zones; officer sees their own zones.',
   })
   @ApiOkResponse({ description: 'Zones.' })
   @Get()

@@ -5,8 +5,8 @@ import { MockTangRatProvider } from './tangrat.provider';
 
 describe('mock external providers', () => {
   it('maps deterministic Tang Rat tokens to seeded identities (D5: includes citizenId for Tang Rat primary path)', async () => {
-    const id1 = await new MockTangRatProvider().verify('mock-inspector-1');
-    expect(id1.sub).toBe('mock-sub-inspector-1');
+    const id1 = await new MockTangRatProvider().verify('mock-officer-1');
+    expect(id1.sub).toBe('mock-sub-officer-1');
     expect(typeof id1.citizenId).toBe('string');
     await expect(
       new MockTangRatProvider().verify('mock-public-collision-a'),

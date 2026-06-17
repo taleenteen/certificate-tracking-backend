@@ -174,49 +174,49 @@ async function main() {
     }),
     prisma.systemUser.create({
       data: {
-        username: 'supervisor-diw',
-        fullName: 'หัวหน้าผู้ตรวจ DIW',
-        roles: ['supervisor', 'inspector'],
+        username: 'officer-diw',
+        fullName: 'เจ้าหน้าที่อาวุโส DIW',
+        roles: ['officer'],
         agencyId: diwAgency.id,
       },
     }),
     prisma.systemUser.create({
       data: {
-        username: 'supervisor-acfs',
-        fullName: 'หัวหน้าผู้ตรวจ ACFS',
-        roles: ['supervisor', 'inspector'],
+        username: 'officer-acfs',
+        fullName: 'เจ้าหน้าที่อาวุโส ACFS',
+        roles: ['officer'],
         agencyId: acfsAgency.id,
       },
     }),
     prisma.systemUser.create({
       data: {
-        username: 'inspector-1',
-        fullName: 'ผู้ตรวจ DIW หนึ่ง',
-        roles: ['inspector'],
+        username: 'officer-1',
+        fullName: 'เจ้าหน้าที่ DIW หนึ่ง',
+        roles: ['officer'],
         agencyId: diwAgency.id,
       },
     }),
     prisma.systemUser.create({
       data: {
-        username: 'inspector-2',
-        fullName: 'ผู้ตรวจ DIW สอง',
-        roles: ['inspector'],
+        username: 'officer-2',
+        fullName: 'เจ้าหน้าที่ DIW สอง',
+        roles: ['officer'],
         agencyId: diwAgency.id,
       },
     }),
     prisma.systemUser.create({
       data: {
-        username: 'inspector-3',
-        fullName: 'ผู้ตรวจ ACFS หนึ่ง',
-        roles: ['inspector'],
+        username: 'officer-3',
+        fullName: 'เจ้าหน้าที่ ACFS หนึ่ง',
+        roles: ['officer'],
         agencyId: acfsAgency.id,
       },
     }),
     prisma.systemUser.create({
       data: {
-        username: 'inspector-4',
-        fullName: 'ผู้ตรวจ ACFS สอง',
-        roles: ['inspector'],
+        username: 'officer-4',
+        fullName: 'เจ้าหน้าที่ ACFS สอง',
+        roles: ['officer'],
         agencyId: acfsAgency.id,
       },
     }),
@@ -240,18 +240,18 @@ async function main() {
   ]);
   const [
     admin,
-    diwSupervisor,
-    acfsSupervisor,
-    diwInspector1,
-    diwInspector2,
-    acfsInspector1,
-    acfsInspector2,
+    diwOfficerSr,
+    acfsOfficerSr,
+    diwOfficer1,
+    diwOfficer2,
+    acfsOfficer1,
+    acfsOfficer2,
     publicOwner,
     joinRequester,
   ] = users;
 
   // A plain ADMIN account (below super_admin) for testing the role hierarchy.
-  // Admins can assign supervisor/inspector roles but not create other admins.
+  // Admins can assign officer roles but not create other admins.
   await prisma.systemUser.create({
     data: {
       username: 'admin',
@@ -279,12 +279,12 @@ async function main() {
   ]; // pre-validated with isValidThaiCitizenId (Tang Rat primary for D5)
 
   const tangUsers = [
-    diwSupervisor,
-    acfsSupervisor,
-    diwInspector1,
-    diwInspector2,
-    acfsInspector1,
-    acfsInspector2,
+    diwOfficerSr,
+    acfsOfficerSr,
+    diwOfficer1,
+    diwOfficer2,
+    acfsOfficer1,
+    acfsOfficer2,
     publicOwner,
     joinRequester,
   ];
@@ -308,18 +308,18 @@ async function main() {
 
   await prisma.userZone.createMany({
     data: [
-      [diwSupervisor.id, zones[0].id],
-      [diwSupervisor.id, zones[2].id],
-      [acfsSupervisor.id, zones[1].id],
-      [acfsSupervisor.id, zones[3].id],
-      [diwInspector1.id, zones[0].id],
-      [diwInspector1.id, zones[2].id],
-      [diwInspector2.id, zones[2].id],
-      [diwInspector2.id, zones[5].id],
-      [acfsInspector1.id, zones[1].id],
-      [acfsInspector1.id, zones[3].id],
-      [acfsInspector2.id, zones[3].id],
-      [acfsInspector2.id, zones[4].id],
+      [diwOfficerSr.id, zones[0].id],
+      [diwOfficerSr.id, zones[2].id],
+      [acfsOfficerSr.id, zones[1].id],
+      [acfsOfficerSr.id, zones[3].id],
+      [diwOfficer1.id, zones[0].id],
+      [diwOfficer1.id, zones[2].id],
+      [diwOfficer2.id, zones[2].id],
+      [diwOfficer2.id, zones[5].id],
+      [acfsOfficer1.id, zones[1].id],
+      [acfsOfficer1.id, zones[3].id],
+      [acfsOfficer2.id, zones[3].id],
+      [acfsOfficer2.id, zones[4].id],
     ].map(([userId, zoneId]) => ({ userId, zoneId })),
   });
 
@@ -465,8 +465,8 @@ async function main() {
   const tasks: InspectionTask[] = [];
   for (let index = 0; index < taskStatuses.length; index += 1) {
     const isDiw = index % 2 === 0;
-    const assignee = isDiw ? diwInspector1 : acfsInspector1;
-    const creator = isDiw ? diwSupervisor : acfsSupervisor;
+    const assignee = isDiw ? diwOfficer1 : acfsOfficer1;
+    const creator = isDiw ? diwOfficerSr : acfsOfficerSr;
     const business = isDiw ? businesses[0] : businesses[3];
     tasks.push(
       await prisma.inspectionTask.create({
@@ -538,7 +538,7 @@ async function main() {
   await prisma.notification.createMany({
     data: [
       {
-        recipientId: diwInspector1.id,
+        recipientId: diwOfficer1.id,
         type: 'TASK_ASSIGNED',
         titleTh: 'ได้รับมอบหมายงานตรวจ',
         bodyTh: `งาน ${tasks[0].taskNo}`,
@@ -546,7 +546,7 @@ async function main() {
         refId: tasks[0].id,
       },
       {
-        recipientId: acfsInspector1.id,
+        recipientId: acfsOfficer1.id,
         type: 'REPORT_RETURNED',
         titleTh: 'รายงานถูกส่งกลับ',
         bodyTh: 'กรุณาแก้ไขรายงานและส่งใหม่',
@@ -559,7 +559,7 @@ async function main() {
     data: [
       {
         agencyId: acfsAgency.id,
-        triggeredBy: acfsSupervisor.id,
+        triggeredBy: acfsOfficerSr.id,
         status: SyncStatus.SUCCESS,
         recordsUpdated: 5,
         startedAt: addDays(-1),
@@ -584,7 +584,7 @@ async function main() {
     `Admin:       admin / ${adminPassword} / TOTP 000000 (development only)`,
   );
   console.log(
-    'mTokens: mock-inspector-1, mock-inspector-3, mock-supervisor-diw, mock-supervisor-acfs, mock-public-owner',
+    'mTokens: mock-officer-1, mock-officer-3, mock-officer-diw, mock-officer-acfs, mock-public-owner',
   );
 }
 

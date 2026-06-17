@@ -2,28 +2,26 @@
  * Central role model. Roles are hierarchical: a higher-ranked role inherits all
  * powers of the roles below it.
  *
- *   public(0) < inspector(1) < supervisor(2) < admin(3) < super_admin(4)
+ *   public(0) < officer(1) < admin(2) < super_admin(3)
  *
  * - `super_admin`: manages all users and is the only role that can grant/revoke
  *   `admin` (and `super_admin`).
  * - `admin`: full operational access; can grant roles strictly below admin.
- * - `supervisor`: creates/assigns tasks, reviews reports, manages own-agency users.
- * - `inspector`: performs field inspections.
- * - `public`: read-only.
+ * - `officer`: field officer — performs inspections, assigns tasks, approves
+ *   reports; scoped to their agency + zones.
+ * - `public`: citizen/business read-only access.
  */
 export type Role =
   | 'public'
-  | 'inspector'
-  | 'supervisor'
+  | 'officer'
   | 'admin'
   | 'super_admin';
 
 export const ROLE_RANK: Record<string, number> = {
   public: 0,
-  inspector: 1,
-  supervisor: 2,
-  admin: 3,
-  super_admin: 4,
+  officer: 1,
+  admin: 2,
+  super_admin: 3,
 };
 
 /** Roles that authenticate through the web admin portal (self-login). */

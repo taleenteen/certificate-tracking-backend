@@ -83,8 +83,8 @@ export class LoginDto {
 export class TangRatLoginDto {
   /**
    * Opaque ทางรัฐ (Tang Rat) mToken. In development the mock provider accepts
-   * deterministic tokens such as `mock-inspector-1`, `mock-supervisor-diw`.
-   * @example mock-inspector-1
+   * deterministic tokens such as `mock-officer-1`, `mock-officer-diw`.
+   * @example mock-officer-1
    */
   @IsString()
   @IsNotEmpty()
@@ -169,7 +169,7 @@ export class AuthUserDto {
   id!: string;
   /** Display name (Thai). */
   fullName!: string;
-  /** Granted roles, e.g. `["inspector"]`. */
+  /** Granted roles, e.g. `["officer"]`. */
   roles!: string[];
   /** Owning agency FK, or null for ADMIN/PUBLIC. */
   agencyId!: string | null;

@@ -31,16 +31,14 @@ export class InspectionService {
     if (isAdminTier(user.roles)) {
       return {} satisfies Prisma.InspectionTaskWhereInput;
     }
-    if (user.roles.includes('supervisor') && scope) {
-      return {
-        zoneId: { in: scope.zoneIds },
-        OR: [
-          { license: { licenseType: { agencyId: scope.agencyId } } },
-          { licenseId: null },
-        ],
-      } satisfies Prisma.InspectionTaskWhereInput;
-    }
-    return { assignedTo: user.sub } satisfies Prisma.InspectionTaskWhereInput;
+    // Officers see all tasks in their zones + agency.
+    return {
+      zoneId: { in: scope!.zoneIds },
+      OR: [
+        { license: { licenseType: { agencyId: scope!.agencyId } } },
+        { licenseId: null },
+      ],
+    } satisfies Prisma.InspectionTaskWhereInput;
   }
 
   list(user: JwtClaims, scope: RequestScope, status?: TaskStatus) {
@@ -101,7 +99,7 @@ export class InspectionService {
           id: dto.assignedTo,
           isActive: true,
           deletedAt: null,
-          roles: { has: 'inspector' },
+          roles: { has: 'officer' },
           agencyId: admin ? undefined : scope!.agencyId,
         },
         include: { userZones: true },
@@ -197,7 +195,7 @@ export class InspectionService {
         id: assigneeId,
         isActive: true,
         deletedAt: null,
-        roles: { has: 'inspector' },
+        roles: { has: 'officer' },
         agencyId: admin ? undefined : scope!.agencyId,
       },
       include: { userZones: true },
@@ -386,15 +384,15 @@ export class InspectionService {
       if (task) {
         const supervisors = await tx.systemUser.findMany({
           where: {
-            roles: { has: 'supervisor' },
+            roles: { has: 'officer' },
             agencyId: task.license?.licenseType.agencyId,
             userZones: { some: { zoneId: task.zoneId } },
             isActive: true,
           },
         });
         await tx.notification.createMany({
-          data: supervisors.map((supervisor) => ({
-            recipientId: supervisor.id,
+          data: supervisors.map((officer) => ({
+            recipientId: officer.id,
             type: 'REPORT_SUBMITTED',
             titleTh: 'มีรายงานรอตรวจทาน',
             bodyTh: `รายงานงาน ${task.taskNo}`,
@@ -428,8 +426,8 @@ export class InspectionService {
       },
       include: { task: { include: { license: true } } },
     });
-    // Admin tier reviews any report; otherwise only supervisors in scope.
-    if (!report || (!admin && !user.roles.includes('supervisor'))) {
+    // Admin tier reviews any report; otherwise only officers in scope.
+    if (!report || (!admin && !user.roles.includes('officer'))) {
       throw new NotFoundException();
     }
     return report;

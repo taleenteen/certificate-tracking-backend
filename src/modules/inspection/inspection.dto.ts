@@ -89,7 +89,7 @@ export class UpdateReportDto {
 }
 
 export class ReturnReportDto {
-  /** Reason the report is being returned to the inspector (Thai). */
+  /** Reason the report is being returned to the officer (Thai). */
   @IsString()
   @IsNotEmpty()
   reviewComment!: string;

@@ -13,7 +13,7 @@ import { AuditService } from './audit.service';
 
 @ApiTags('Audit')
 @ApiBearerAuth('access-token')
-@Roles('supervisor', 'admin')
+@Roles('officer', 'admin')
 @Controller('audit-logs')
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
@@ -21,7 +21,7 @@ export class AuditController {
   @ApiOperation({
     summary: 'List audit logs',
     description:
-      'Admin sees all; supervisor is scoped to their agency + zones. Filter by ' +
+      'Admin sees all; officer is scoped to their agency + zones. Filter by ' +
       'user / entity type / date range. Returns `{ data, meta }`.',
   })
   @ApiOkResponse({ description: 'Paginated audit log entries.' })

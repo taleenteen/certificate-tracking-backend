@@ -64,13 +64,13 @@ describe('security guards', () => {
     expect(request).toMatchObject({ scope: null });
   });
 
-  it('derives inspector scope only from JWT claims', () => {
+  it('derives officer scope only from JWT claims', () => {
     const request = {
       query: { zoneId: 'client-controlled-zone' },
       user: {
-        sub: 'inspector',
+        sub: 'officer',
         jti: 'jti',
-        roles: ['inspector'],
+        roles: ['officer'],
         agencyId: 'mock-agency-uuid',
         zoneIds: ['jwt-zone'],
         authProvider: AuthProvider.tang_rat,

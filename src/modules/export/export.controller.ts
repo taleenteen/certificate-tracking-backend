@@ -49,12 +49,12 @@ export class ExportController {
     response.type(file.contentType).attachment(file.fileName).send(file.buffer);
   }
 
-  @Roles('supervisor', 'admin')
+  @Roles('officer', 'admin')
   @ApiOperation({
-    summary: 'Export an inspection report (supervisor/admin)',
+    summary: 'Export an inspection report (officer/admin)',
     description:
       'Streams a single inspection report as PDF or XLSX. Scoped to the ' +
-      'caller (supervisor: zone + agency).',
+      'caller (officer: zone + agency).',
   })
   @ApiParam({ name: 'id', description: 'Report uuid', format: 'uuid' })
   @ApiQuery({
