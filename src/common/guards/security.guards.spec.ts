@@ -1,5 +1,5 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { Agency, AuthProvider, ClientType } from '@prisma/client';
+import { AuthProvider, ClientType } from '@prisma/client';
 import { ClientTypeGuard } from './client-type.guard';
 import { ScopeGuard } from './scope.guard';
 
@@ -19,7 +19,7 @@ describe('security guards', () => {
             sub: 'admin',
             jti: 'jti',
             roles: ['admin'],
-            agency: null,
+            agencyId: null,
             zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.app,
@@ -38,7 +38,7 @@ describe('security guards', () => {
             sub: 'super',
             jti: 'jti',
             roles: ['super_admin'],
-            agency: null,
+            agencyId: null,
             zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.app,
@@ -54,7 +54,7 @@ describe('security guards', () => {
         sub: 'super',
         jti: 'jti',
         roles: ['super_admin'],
-        agency: null,
+        agencyId: null,
         zoneIds: [],
         authProvider: AuthProvider.self,
         clientType: ClientType.web_admin,
@@ -71,7 +71,7 @@ describe('security guards', () => {
         sub: 'inspector',
         jti: 'jti',
         roles: ['inspector'],
-        agency: Agency.DIW,
+        agencyId: 'mock-agency-uuid',
         zoneIds: ['jwt-zone'],
         authProvider: AuthProvider.tang_rat,
         clientType: ClientType.app,
@@ -79,7 +79,7 @@ describe('security guards', () => {
     };
     expect(new ScopeGuard().canActivate(context(request))).toBe(true);
     expect(request).toMatchObject({
-      scope: { agency: Agency.DIW, zoneIds: ['jwt-zone'] },
+      scope: { agencyId: 'mock-agency-uuid', zoneIds: ['jwt-zone'] },
     });
   });
 });

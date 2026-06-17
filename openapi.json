@@ -3,7 +3,7 @@
   "paths": {
     "/api": {
       "get": {
-        "operationId": "AppController_getHello",
+        "operationId": "AppController_getWelcomePage",
         "parameters": [],
         "responses": {
           "200": {
@@ -998,6 +998,466 @@
         "summary": "Revoke a pending invite (ADMIN+)",
         "tags": [
           "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/join-requests": {
+      "get": {
+        "description": "Lists PENDING non-first-owner join requests for the active company. Expired requests are lazily swept to EXPIRED status on each read. Requires active juristic context matching the :id param.",
+        "operationId": "JuristicController_getPendingRequests",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JoinRequestDetailDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not in active juristic context or insufficient role."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Pending join requests for this company (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/join-requests/{reqId}/approve": {
+      "post": {
+        "description": "Approve a pending join request and grant the requester membership. Peer approvers can grant MEMBER or ADMIN only (not OWNER). Idempotent if the requester is already a member.",
+        "operationId": "JuristicController_approveJoinRequest",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reqId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewJoinRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found."
+          },
+          "409": {
+            "description": "Request is no longer pending."
+          },
+          "410": {
+            "description": "Request has expired."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Approve a join request (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic/{id}/join-requests/{reqId}/reject": {
+      "post": {
+        "description": "Reject a pending join request. The requester is notified.",
+        "operationId": "JuristicController_rejectJoinRequest",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reqId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectJoinRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found."
+          },
+          "409": {
+            "description": "Request is no longer pending."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Reject a join request (ADMIN+)",
+        "tags": [
+          "Juristic"
+        ]
+      }
+    },
+    "/api/juristic-requests/companies": {
+      "get": {
+        "description": "Full-text search by Thai or English company name, or exact match on registration ID. Returns up to 20 results. Does not require juristic context.",
+        "operationId": "JuristicJoinRequestController_searchCompanies",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompanySearchResultDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Search companies to join",
+        "tags": [
+          "Juristic Requests"
+        ]
+      }
+    },
+    "/api/juristic-requests": {
+      "post": {
+        "description": "Request to join a company. Requires a verified citizen ID on your account (link Tang Rat first). Routing is automatic: if the company has no active OWNER, the request is sent to platform staff as a first-owner claim; otherwise it goes to the company OWNER/ADMIN queue. Rate limited to 3 requests per hour, max 5 pending at a time.",
+        "operationId": "JuristicJoinRequestController_requestToJoin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJoinRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinRequestSubmittedDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Company not found."
+          },
+          "409": {
+            "description": "Already a member, duplicate pending, or rate limit exceeded."
+          },
+          "422": {
+            "description": "No verified citizen ID on account."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Submit a join request",
+        "tags": [
+          "Juristic Requests"
+        ]
+      }
+    },
+    "/api/juristic-requests/mine": {
+      "get": {
+        "description": "List all join requests submitted by the current user, with their current status.",
+        "operationId": "JuristicJoinRequestController_getMyRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JoinRequestSummaryDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "My join requests",
+        "tags": [
+          "Juristic Requests"
+        ]
+      }
+    },
+    "/api/juristic-requests/admin/first-owner-claims": {
+      "get": {
+        "description": "Platform-staff queue for companies that have no active OWNER yet. Expired requests are lazily swept on each read. Requires admin tier.",
+        "operationId": "JuristicJoinRequestController_getFirstOwnerClaims",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FirstOwnerClaimDetailDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Staff: first-owner claim queue",
+        "tags": [
+          "Juristic Requests"
+        ]
+      }
+    },
+    "/api/juristic-requests/admin/{reqId}/approve": {
+      "post": {
+        "description": "Approve a first-owner claim, making the requester the OWNER of the company. Race condition safe: 409 if another OWNER appeared since the request was submitted.",
+        "operationId": "JuristicJoinRequestController_approveFirstOwnerClaim",
+        "parameters": [
+          {
+            "name": "reqId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveFirstOwnerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Claim not found."
+          },
+          "409": {
+            "description": "Request no longer pending, or company already has an OWNER."
+          },
+          "410": {
+            "description": "Request has expired."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Staff: approve a first-owner claim",
+        "tags": [
+          "Juristic Requests"
+        ]
+      }
+    },
+    "/api/juristic-requests/admin/{reqId}/reject": {
+      "post": {
+        "description": "Reject a first-owner claim. The requester is notified.",
+        "operationId": "JuristicJoinRequestController_rejectFirstOwnerClaim",
+        "parameters": [
+          {
+            "name": "reqId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectJoinRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Claim not found."
+          },
+          "409": {
+            "description": "Request is no longer pending."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Staff: reject a first-owner claim",
+        "tags": [
+          "Juristic Requests"
+        ]
+      }
+    },
+    "/api/juristic-requests/{id}": {
+      "delete": {
+        "description": "Cancel a join request you submitted. Only PENDING requests can be cancelled.",
+        "operationId": "JuristicJoinRequestController_cancelRequest",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JuristicSuccessDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found."
+          },
+          "409": {
+            "description": "Request is no longer pending."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Cancel own pending request",
+        "tags": [
+          "Juristic Requests"
         ]
       }
     },
@@ -2369,6 +2829,10 @@
       "description": "Multi-tenant corporate portal: memberships, context, invites (D6)"
     },
     {
+      "name": "Juristic Requests",
+      "description": "Self-service join request flow: search, submit, approve, reject (D7)"
+    },
+    {
       "name": "Notifications",
       "description": "In-app notifications for the current user"
     },
@@ -2644,6 +3108,224 @@
           "expiresAt",
           "createdAt"
         ]
+      },
+      "JoinRequestDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "requesterName": {
+            "type": "string"
+          },
+          "citizenIdLast4": {
+            "type": "string"
+          },
+          "requestedRole": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "MEMBER"
+            ]
+          },
+          "requestedPosition": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requesterName",
+          "requestedRole",
+          "expiresAt",
+          "createdAt"
+        ]
+      },
+      "ReviewJoinRequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RejectJoinRequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CompanySearchResultDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "nameTh": {
+            "type": "string"
+          },
+          "nameEn": {
+            "type": "string"
+          },
+          "hasActiveOwner": {
+            "type": "boolean",
+            "description": "True if the company already has at least one active OWNER"
+          }
+        },
+        "required": [
+          "id",
+          "registrationId",
+          "nameTh",
+          "hasActiveOwner"
+        ]
+      },
+      "CreateJoinRequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "JoinRequestSubmittedDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "juristicId": {
+            "type": "string"
+          },
+          "isFirstOwnerClaim": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "EXPIRED"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "juristicId",
+          "isFirstOwnerClaim",
+          "status"
+        ]
+      },
+      "JoinRequestSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "juristicId": {
+            "type": "string"
+          },
+          "nameTh": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "EXPIRED"
+            ]
+          },
+          "isFirstOwnerClaim": {
+            "type": "boolean"
+          },
+          "requestedRole": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ADMIN",
+              "MEMBER"
+            ]
+          },
+          "requestedPosition": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "juristicId",
+          "nameTh",
+          "status",
+          "isFirstOwnerClaim",
+          "requestedRole",
+          "expiresAt",
+          "createdAt"
+        ]
+      },
+      "FirstOwnerClaimDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "requesterName": {
+            "type": "string"
+          },
+          "citizenIdLast4": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "juristicId": {
+            "type": "string"
+          },
+          "nameTh": {
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requesterName",
+          "juristicId",
+          "nameTh",
+          "registrationId",
+          "expiresAt",
+          "createdAt"
+        ]
+      },
+      "ApproveFirstOwnerDto": {
+        "type": "object",
+        "properties": {}
       },
       "ProfileResponseDto": {
         "type": "object",

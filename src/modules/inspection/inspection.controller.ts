@@ -32,6 +32,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtClaims } from '../../common/auth.types';
 import {
+  AssignTaskDto,
   CancelTaskDto,
   CreateTaskDto,
   ReturnReportDto,
@@ -46,7 +47,7 @@ import { InspectionService } from './inspection.service';
 export class InspectionController {
   constructor(private readonly inspections: InspectionService) {}
 
-  @Roles('inspector', 'supervisor')
+  @Roles('inspector', 'supervisor', 'admin')
   @ApiOperation({
     summary: 'List inspection tasks (scoped)',
     description:
@@ -65,7 +66,7 @@ export class InspectionController {
     return this.inspections.list(user, request.scope!, query.status);
   }
 
-  @Roles('inspector', 'supervisor')
+  @Roles('inspector', 'supervisor', 'admin')
   @ApiOperation({
     summary: 'Get an inspection task (scoped)',
     description:
@@ -84,9 +85,9 @@ export class InspectionController {
     return this.inspections.findTask(id, user, request.scope!);
   }
 
-  @Roles('supervisor')
+  @Roles('supervisor', 'admin')
   @ApiOperation({
-    summary: 'Create an inspection task (supervisor)',
+    summary: 'Create an inspection task (supervisor/admin)',
     description:
       'Assignee must hold the inspector role, share a zone with the business, ' +
       'and match the agency. Rejected (409) if the assignee owns the business ' +
@@ -108,6 +109,26 @@ export class InspectionController {
     return this.inspections.createTask(dto, user, request.scope!);
   }
 
+  @Roles('supervisor', 'admin')
+  @ApiOperation({
+    summary: 'Assign an inspector to a WAITING_ASSIGNMENT task (supervisor/admin)',
+    description:
+      'Transitions WAITING_ASSIGNMENT → ASSIGNED, sets the assignee, and notifies them.',
+  })
+  @ApiParam({ name: 'id', description: 'Task uuid', format: 'uuid' })
+  @ApiOkResponse({ description: 'The updated task.' })
+  @ApiNotFoundResponse({ description: 'Task not found or out of scope.' })
+  @ApiForbiddenResponse({ description: 'Inspector does not cover the zone.' })
+  @Patch('inspection-tasks/:id/assign')
+  assignTask(
+    @Param('id') id: string,
+    @Body() dto: AssignTaskDto,
+    @CurrentUser() user: JwtClaims,
+    @Req() request: Request,
+  ) {
+    return this.inspections.assignTask(id, dto.assignedTo, user, request.scope!);
+  }
+
   @Roles('inspector')
   @ApiOperation({
     summary: 'Start a task (assignee)',
@@ -123,9 +144,9 @@ export class InspectionController {
     return this.inspections.startTask(id, user);
   }
 
-  @Roles('supervisor')
+  @Roles('supervisor', 'admin')
   @ApiOperation({
-    summary: 'Cancel a task (supervisor)',
+    summary: 'Cancel a task (supervisor/admin)',
     description: 'Only from ASSIGNED or IN_PROGRESS. Requires a reason.',
   })
   @ApiParam({ name: 'id', description: 'Task uuid', format: 'uuid' })

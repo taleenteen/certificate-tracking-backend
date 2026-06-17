@@ -35,7 +35,7 @@ export class InspectionService {
       return {
         zoneId: { in: scope.zoneIds },
         OR: [
-          { license: { licenseType: { agency: scope.agency } } },
+          { license: { licenseType: { agencyId: scope.agencyId } } },
           { licenseId: null },
         ],
       } satisfies Prisma.InspectionTaskWhereInput;
@@ -50,7 +50,7 @@ export class InspectionService {
         business: true,
         license: { include: { licenseType: true } },
         assignee: {
-          select: { id: true, fullName: true, agency: true, roles: true },
+          select: { id: true, fullName: true, agencyId: true, roles: true },
         },
         reports: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
@@ -66,7 +66,7 @@ export class InspectionService {
         zone: true,
         license: { include: { licenseType: true } },
         assignee: {
-          select: { id: true, fullName: true, agency: true, roles: true },
+          select: { id: true, fullName: true, agencyId: true, roles: true },
         },
         reports: {
           include: { checklistTemplate: true, documents: true },
@@ -84,52 +84,52 @@ export class InspectionService {
     creator: JwtClaims,
     scope: RequestScope | null,
   ) {
-    // Admin tier may create tasks in any zone/agency; supervisors are confined
-    // to their own scope.
     const admin = isAdminTier(creator.roles);
-    const [business, assignee] = await Promise.all([
-      this.prisma.business.findFirst({
-        where: {
-          id: dto.businessId,
-          deletedAt: null,
-          zoneId: admin ? undefined : { in: scope!.zoneIds },
-        },
-      }),
-      this.prisma.systemUser.findFirst({
+    const business = await this.prisma.business.findFirst({
+      where: {
+        id: dto.businessId,
+        deletedAt: null,
+        zoneId: admin ? undefined : { in: scope!.zoneIds },
+      },
+    });
+    if (!business) throw new NotFoundException();
+
+    let assignee: { id: string; userZones: { zoneId: string }[] } | null = null;
+    if (dto.assignedTo) {
+      assignee = await this.prisma.systemUser.findFirst({
         where: {
           id: dto.assignedTo,
           isActive: true,
           deletedAt: null,
           roles: { has: 'inspector' },
-          agency: admin ? undefined : scope!.agency,
+          agencyId: admin ? undefined : scope!.agencyId,
         },
         include: { userZones: true },
-      }),
-    ]);
-    if (!business || !assignee) throw new NotFoundException();
-    if (business.ownerUserId === assignee.id) {
-      throw new ConflictException(
-        'Assignee has a conflict of interest with this business',
-      );
+      });
+      if (!assignee) throw new NotFoundException();
+      if (business.ownerUserId === assignee.id) {
+        throw new ConflictException(
+          'Assignee has a conflict of interest with this business',
+        );
+      }
+      if (!assignee.userZones.some(({ zoneId }) => zoneId === business.zoneId)) {
+        throw new ForbiddenException('Assignee does not cover business zone');
+      }
     }
-    if (!assignee.userZones.some(({ zoneId }) => zoneId === business.zoneId)) {
-      throw new ForbiddenException('Assignee does not cover business zone');
-    }
+
     if (dto.licenseId) {
       const license = await this.prisma.license.findFirst({
         where: {
           id: dto.licenseId,
           businessId: business.id,
-          licenseType: admin ? undefined : { agency: scope!.agency },
+          licenseType: admin ? undefined : { agencyId: scope!.agencyId },
           deletedAt: null,
         },
       });
       if (!license) throw new NotFoundException();
     }
+
     const prefix = `T-${new Date().getFullYear()}-`;
-    // Sequence generation inside the transaction + retry on unique collision so
-    // concurrent requests cannot produce duplicate task numbers without schema
-    // changes. taskNo has a @unique constraint; P2002 triggers the retry.
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
         return await this.prisma.$transaction(async (tx) => {
@@ -145,21 +145,24 @@ export class InspectionService {
               businessId: business.id,
               licenseId: dto.licenseId,
               zoneId: business.zoneId,
-              assignedTo: assignee.id,
+              assignedTo: assignee?.id ?? null,
               createdBy: creator.sub,
+              status: assignee ? TaskStatus.ASSIGNED : TaskStatus.WAITING_ASSIGNMENT,
               dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
             },
           });
-          await tx.notification.create({
-            data: {
-              recipientId: assignee.id,
-              type: 'TASK_ASSIGNED',
-              titleTh: 'ได้รับมอบหมายงานตรวจ',
-              bodyTh: `งาน ${task.taskNo}`,
-              refType: 'inspection_tasks',
-              refId: task.id,
-            },
-          });
+          if (assignee) {
+            await tx.notification.create({
+              data: {
+                recipientId: assignee.id,
+                type: 'TASK_ASSIGNED',
+                titleTh: 'ได้รับมอบหมายงานตรวจ',
+                bodyTh: `งาน ${task.taskNo}`,
+                refType: 'inspection_tasks',
+                refId: task.id,
+              },
+            });
+          }
           return task;
         });
       } catch (e) {
@@ -174,6 +177,56 @@ export class InspectionService {
       }
     }
     throw new Error('Task number generation failed after retries');
+  }
+
+  async assignTask(
+    id: string,
+    assigneeId: string,
+    actor: JwtClaims,
+    scope: RequestScope | null,
+  ) {
+    const admin = isAdminTier(actor.roles);
+    const task = await this.prisma.inspectionTask.findFirst({
+      where: { id, status: TaskStatus.WAITING_ASSIGNMENT, ...this.scopedWhere(actor, scope) },
+      include: { business: true },
+    });
+    if (!task) throw new NotFoundException();
+
+    const assignee = await this.prisma.systemUser.findFirst({
+      where: {
+        id: assigneeId,
+        isActive: true,
+        deletedAt: null,
+        roles: { has: 'inspector' },
+        agencyId: admin ? undefined : scope!.agencyId,
+      },
+      include: { userZones: true },
+    });
+    if (!assignee) throw new NotFoundException();
+    if (task.business.ownerUserId === assignee.id) {
+      throw new ConflictException('Assignee has a conflict of interest with this business');
+    }
+    if (!assignee.userZones.some(({ zoneId }) => zoneId === task.business.zoneId)) {
+      throw new ForbiddenException('Assignee does not cover business zone');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.inspectionTask.update({
+        where: { id },
+        data: { assignedTo: assignee.id, status: TaskStatus.ASSIGNED },
+      });
+      await tx.notification.create({
+        data: {
+          recipientId: assignee.id,
+          type: 'TASK_ASSIGNED',
+          titleTh: 'ได้รับมอบหมายงานตรวจ',
+          bodyTh: `งาน ${updated.taskNo}`,
+          refType: 'inspection_tasks',
+          refId: updated.id,
+        },
+      });
+      return updated;
+    });
   }
 
   async startTask(id: string, user: JwtClaims) {
@@ -334,7 +387,7 @@ export class InspectionService {
         const supervisors = await tx.systemUser.findMany({
           where: {
             roles: { has: 'supervisor' },
-            agency: task.license?.licenseType.agency,
+            agencyId: task.license?.licenseType.agencyId,
             userZones: { some: { zoneId: task.zoneId } },
             isActive: true,
           },
@@ -368,7 +421,7 @@ export class InspectionService {
           : {
               zoneId: { in: scope!.zoneIds },
               OR: [
-                { license: { licenseType: { agency: scope!.agency } } },
+                { license: { licenseType: { agencyId: scope!.agencyId } } },
                 { licenseId: null },
               ],
             },

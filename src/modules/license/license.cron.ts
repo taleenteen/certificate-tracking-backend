@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Agency, LicenseStatus } from '@prisma/client';
+import { LicenseStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -38,7 +38,7 @@ export class LicenseCron {
               deletedAt: null,
               isActive: true,
               roles: { has: 'inspector' },
-              agency: license.licenseType.agency,
+              agencyId: license.licenseType.agencyId,
               userZones: { some: { zoneId: license.business.zoneId } },
             },
             select: { id: true },
@@ -90,7 +90,7 @@ export class LicenseCron {
           deletedAt: null,
           isActive: true,
           roles: { has: 'supervisor' },
-          agency: license.licenseType.agency,
+          agencyId: license.licenseType.agencyId,
           userZones: { some: { zoneId: license.business.zoneId } },
         },
       });
@@ -108,12 +108,14 @@ export class LicenseCron {
   }
 
   @Cron('30 8 * * *', { timeZone: 'Asia/Bangkok' })
-  rng4FeeCheck() {
+  async rng4FeeCheck() {
     // MOCK: replace in UAT. TODO(schema): LICENSE_FEE_PAYMENT in Phase 2.
+    const diw = await this.prisma.agency.findUnique({ where: { code: 'DIW' } });
+    if (!diw) return;
     return this.prisma.license.updateMany({
       where: {
         licenseType: {
-          agency: Agency.DIW,
+          agencyId: diw.id,
           suspendedOnNonpayment: true,
         },
         suspensionReason: 'MOCK_OVERDUE',

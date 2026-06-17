@@ -50,17 +50,16 @@ export class UserController {
     return this.users.list(query, user);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'super_admin')
   @ApiOperation({
-    summary: 'Create a user (admin)',
+    summary: 'Create a user (admin/super_admin)',
     description:
-      'Creates a SUPERVISOR/INSPECTOR account. A temp password is generated ' +
-      'for self-login users (mustChangePassword=true).',
+      'Admin creates SUPERVISOR/INSPECTOR accounts. super_admin may also create ADMIN accounts.',
   })
   @ApiCreatedResponse({ description: 'The created user (with temp password).' })
   @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.users.create(dto);
+  create(@Body() dto: CreateUserDto, @CurrentUser() user: JwtClaims) {
+    return this.users.create(dto, user);
   }
 
   @Roles('admin')
@@ -94,7 +93,7 @@ export class UserController {
     @Body() dto: UpdateAgencyDto,
     @CurrentUser() user: JwtClaims,
   ) {
-    return this.users.updateAgency(id, dto.agency, user);
+    return this.users.updateAgency(id, dto.agencyId, user);
   }
 
   @Roles('supervisor', 'admin')

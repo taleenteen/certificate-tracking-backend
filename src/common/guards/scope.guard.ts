@@ -17,10 +17,10 @@ export class ScopeGuard implements CanActivate {
       request.scope = null;
       return true;
     }
-    if (!user.agency) {
+    if (!user.agencyId) {
       throw new ForbiddenException('Agency scope is required');
     }
-    request.scope = { zoneIds: user.zoneIds, agency: user.agency };
+    request.scope = { zoneIds: user.zoneIds, agencyId: user.agencyId };
     return true;
   }
 }

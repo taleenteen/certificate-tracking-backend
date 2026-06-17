@@ -79,7 +79,7 @@ export class AuthService {
       sub: user.id,
       jti,
       roles: user.roles,
-      agency: user.agency,
+      agencyId: user.agencyId,
       zoneIds: zones.map(({ zoneId }) => zoneId),
       authProvider,
       clientType,
@@ -179,7 +179,7 @@ export class AuthService {
         id: user.id,
         fullName: user.fullName,
         roles: user.roles,
-        agency: user.agency,
+        agencyId: user.agencyId,
       },
     };
   }
@@ -294,8 +294,9 @@ export class AuthService {
     password: string,
     metadata: RequestMetadata,
   ) {
-    const user = await this.prisma.systemUser.findUnique({
-      where: { username },
+    // Accept username or email — users often type their email in the login box.
+    const user = await this.prisma.systemUser.findFirst({
+      where: { OR: [{ username }, { email: username }], deletedAt: null },
     });
     const invalid = () => new UnauthorizedException('Invalid credentials');
     if (
@@ -341,7 +342,7 @@ export class AuthService {
             sub: user.id,
             jti: randomUUID(),
             roles: user.roles,
-            agency: null,
+            agencyId: null,
             zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.app,
@@ -563,7 +564,7 @@ export class AuthService {
             sub: user.id,
             jti: randomUUID(),
             roles: user.roles,
-            agency: null,
+            agencyId: null,
             zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.web_admin,
@@ -801,7 +802,7 @@ export class AuthService {
         id: session.user.id,
         fullName: session.user.fullName,
         roles: session.user.roles,
-        agency: session.user.agency,
+        agencyId: session.user.agencyId,
       },
       activeJuristicId: juristicId ?? null,
     };

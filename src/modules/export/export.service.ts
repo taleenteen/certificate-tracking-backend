@@ -86,7 +86,7 @@ export class ExportService {
           : {
               zoneId: { in: scope?.zoneIds ?? [] },
               OR: [
-                { license: { licenseType: { agency: scope?.agency } } },
+                { license: { licenseType: { agencyId: scope?.agencyId } } },
                 { licenseId: null },
               ],
             },

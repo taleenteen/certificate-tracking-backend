@@ -30,9 +30,10 @@ export class CreateTaskDto {
   @IsUUID()
   licenseId?: string;
 
-  /** Inspector to assign (uuid). Must share a zone + agency, and not own it. */
+  /** Inspector to assign (uuid). Omit to create an unassigned (WAITING_ASSIGNMENT) task. */
+  @IsOptional()
   @IsUUID()
-  assignedTo!: string;
+  assignedTo?: string;
 
   /**
    * Optional due date (ISO-8601).
@@ -41,6 +42,12 @@ export class CreateTaskDto {
   @IsOptional()
   @IsDateString()
   dueDate?: string;
+}
+
+export class AssignTaskDto {
+  /** Inspector to assign (uuid). Must share a zone + agency, and not own the business. */
+  @IsUUID()
+  assignedTo!: string;
 }
 
 export class CancelTaskDto {

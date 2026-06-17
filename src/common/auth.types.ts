@@ -1,10 +1,10 @@
-import { Agency, AuthProvider, ClientType } from '@prisma/client';
+import { AuthProvider, ClientType } from '@prisma/client';
 
 export interface JwtClaims {
   sub: string;
   jti: string;
   roles: string[];
-  agency: Agency | null;
+  agencyId: string | null;
   zoneIds: string[];
   authProvider: AuthProvider;
   clientType: ClientType;
@@ -27,5 +27,5 @@ export interface JuristicContext {
 
 export interface RequestScope {
   zoneIds: string[];
-  agency: Agency;
+  agencyId: string;
 }

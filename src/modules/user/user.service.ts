@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Agency, AuthProvider, Prisma } from '@prisma/client';
+import { AuthProvider, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { JwtClaims, RequestScope } from '../../common/auth.types';
@@ -22,7 +22,7 @@ export class UserService {
   list(query: UserQueryDto, actor: JwtClaims) {
     const where: Prisma.SystemUserWhereInput = {
       deletedAt: null,
-      agency: isAdminTier(actor.roles) ? undefined : actor.agency!,
+      agencyId: isAdminTier(actor.roles) ? undefined : actor.agencyId!,
       roles: query.role ? { has: query.role } : undefined,
       isActive: query.status,
       userZones: query.zoneId ? { some: { zoneId: query.zoneId } } : undefined,
@@ -43,7 +43,7 @@ export class UserService {
         fullName: true,
         phone: true,
         roles: true,
-        agency: true,
+        agencyId: true,
         isActive: true,
         mustChangePassword: true,
         lastLoginAt: true,
@@ -53,7 +53,10 @@ export class UserService {
     });
   }
 
-  async create(dto: CreateUserDto) {
+  async create(dto: CreateUserDto, actor?: JwtClaims) {
+    if (dto.roles.includes('admin') && !actor?.roles.includes('super_admin')) {
+      throw new ForbiddenException('Only super_admin may create admin accounts');
+    }
     const tempPassword = dto.username
       ? `Tmp-${randomBytes(8).toString('base64url')}!`
       : undefined;
@@ -64,7 +67,7 @@ export class UserService {
         email: dto.email,
         phone: dto.phone,
         roles: dto.roles,
-        agency: dto.agency,
+        agencyId: dto.agencyId,
         passwordHash: tempPassword ? await bcrypt.hash(tempPassword, 12) : null,
         mustChangePassword: !!tempPassword,
         userZones: {
@@ -88,7 +91,7 @@ export class UserService {
         email: true,
         phone: true,
         roles: true,
-        agency: true,
+        agencyId: true,
         isActive: true,
       },
     });
@@ -120,27 +123,27 @@ export class UserService {
         id: true,
         fullName: true,
         roles: true,
-        agency: true,
+        agencyId: true,
         isActive: true,
       },
     });
   }
 
-  async updateAgency(id: string, agency: Agency, actor: JwtClaims) {
+  async updateAgency(id: string, agencyId: string, actor: JwtClaims) {
     const target = await this.prisma.systemUser.findFirst({
       where: { id, deletedAt: null },
     });
     if (!target) throw new NotFoundException();
     if (
       !isAdminTier(actor.roles) &&
-      (target.agency !== actor.agency || agency !== actor.agency)
+      (target.agencyId !== actor.agencyId || agencyId !== actor.agencyId)
     ) {
       throw new ForbiddenException();
     }
     return this.prisma.systemUser.update({
       where: { id },
-      data: { agency },
-      select: { id: true, fullName: true, agency: true, roles: true },
+      data: { agencyId },
+      select: { id: true, fullName: true, agencyId: true, roles: true },
     });
   }
 
@@ -154,7 +157,7 @@ export class UserService {
       where: {
         id,
         deletedAt: null,
-        agency: isAdminTier(actor.roles) ? undefined : actor.agency!,
+        agencyId: isAdminTier(actor.roles) ? undefined : actor.agencyId!,
       },
     });
     if (!target) throw new NotFoundException();

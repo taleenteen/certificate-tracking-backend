@@ -1,7 +1,7 @@
 import {
   Controller,
   Get,
-  ParseEnumPipe,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -9,7 +9,6 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Agency } from '@prisma/client';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -40,14 +39,14 @@ export class SyncController {
       'license number. Rate limited to 1 per 5 min per agency. Supervisors ' +
       'may only sync their own agency.',
   })
-  @ApiQuery({ name: 'agency', enum: Agency, description: 'Agency to sync.' })
+  @ApiQuery({ name: 'agencyId', description: 'Agency UUID to sync.' })
   @ApiCreatedResponse({ description: 'The completed sync log.' })
   @Post('trigger')
   trigger(
-    @Query('agency', new ParseEnumPipe(Agency)) agency: Agency,
+    @Query('agencyId', new ParseUUIDPipe()) agencyId: string,
     @CurrentUser() user: JwtClaims,
   ) {
-    return this.sync.trigger(agency, user);
+    return this.sync.trigger(agencyId, user);
   }
 
   @Roles('admin')

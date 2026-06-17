@@ -87,7 +87,7 @@ export class MyService {
       email: dbUser.email ?? undefined,
       phone: dbUser.phone ?? undefined,
       roles: dbUser.roles,
-      agency: dbUser.agency,
+      agencyId: dbUser.agencyId,
       citizenIdVerified: !!dbUser.citizenId,
       citizenIdLast4: dbUser.citizenIdLast4 ?? undefined,
       primaryChannel: dbUser.primaryChannel,

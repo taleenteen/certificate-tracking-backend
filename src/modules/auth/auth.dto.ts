@@ -1,4 +1,3 @@
-import { Agency } from '@prisma/client';
 import {
   IsEmail,
   IsNotEmpty,
@@ -172,8 +171,8 @@ export class AuthUserDto {
   fullName!: string;
   /** Granted roles, e.g. `["inspector"]`. */
   roles!: string[];
-  /** Owning agency, or null for ADMIN/PUBLIC. */
-  agency!: Agency | null;
+  /** Owning agency FK, or null for ADMIN/PUBLIC. */
+  agencyId!: string | null;
 }
 
 export class AuthTokenResponseDto {

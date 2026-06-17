@@ -1,5 +1,6 @@
 import {
-  Agency,
+  AgencyApiStatus,
+  AgencyDataSource,
   AuthProvider,
   Business,
   InspectionTask,
@@ -50,6 +51,7 @@ async function resetDatabase() {
     prisma.juristicPerson.deleteMany(),
     prisma.zone.deleteMany(),
     prisma.licenseType.deleteMany(),
+    prisma.agency.deleteMany(),
   ]);
 }
 
@@ -60,13 +62,34 @@ async function main() {
 
   await resetDatabase();
 
+  const [diwAgency, acfsAgency] = await Promise.all([
+    prisma.agency.create({
+      data: {
+        code: 'DIW',
+        nameTh: 'กรมโรงงานอุตสาหกรรม',
+        nameEn: 'Department of Industrial Works',
+        dataSource: AgencyDataSource.MANUAL_IMPORT,
+        apiStatus: AgencyApiStatus.MANUAL,
+      },
+    }),
+    prisma.agency.create({
+      data: {
+        code: 'ACFS',
+        nameTh: 'สำนักงานมาตรฐานสินค้าเกษตรและอาหารแห่งชาติ',
+        nameEn: 'National Bureau of Agricultural Commodity and Food Standards',
+        dataSource: AgencyDataSource.API,
+        apiStatus: AgencyApiStatus.CONNECTED,
+      },
+    }),
+  ]);
+
   const licenseTypes = await Promise.all([
     prisma.licenseType.create({
       data: {
         code: 'RNG4',
         nameTh: 'ใบอนุญาตประกอบกิจการโรงงาน ร.ง.4',
         nameEn: 'Factory Operation License',
-        agency: Agency.DIW,
+        agencyId: diwAgency.id,
         validityYears: 1,
         feeThb: 500,
         renewalFeeThb: 500,
@@ -82,7 +105,7 @@ async function main() {
         code: 'HAZMAT',
         nameTh: 'ใบอนุญาตวัตถุอันตราย',
         nameEn: 'Hazardous Substance License',
-        agency: Agency.DIW,
+        agencyId: diwAgency.id,
         validityYears: 3,
         feeThb: 3000,
         prerequisiteTypeIds: [],
@@ -97,7 +120,7 @@ async function main() {
         data: {
           code: String(code),
           nameTh: String(nameTh),
-          agency: Agency.ACFS,
+          agencyId: acfsAgency.id,
           validityYears: Number(validityYears),
           prerequisiteTypeIds: [],
         },
@@ -146,7 +169,7 @@ async function main() {
         fullName: 'ผู้ดูแลระบบสูงสุด',
         roles: ['super_admin'],
         totpSecret: 'JBSWY3DPEHPK3PXP',
-        mustChangePassword: true,
+        mustChangePassword: false,
       },
     }),
     prisma.systemUser.create({
@@ -154,7 +177,7 @@ async function main() {
         username: 'supervisor-diw',
         fullName: 'หัวหน้าผู้ตรวจ DIW',
         roles: ['supervisor', 'inspector'],
-        agency: Agency.DIW,
+        agencyId: diwAgency.id,
       },
     }),
     prisma.systemUser.create({
@@ -162,7 +185,7 @@ async function main() {
         username: 'supervisor-acfs',
         fullName: 'หัวหน้าผู้ตรวจ ACFS',
         roles: ['supervisor', 'inspector'],
-        agency: Agency.ACFS,
+        agencyId: acfsAgency.id,
       },
     }),
     prisma.systemUser.create({
@@ -170,7 +193,7 @@ async function main() {
         username: 'inspector-1',
         fullName: 'ผู้ตรวจ DIW หนึ่ง',
         roles: ['inspector'],
-        agency: Agency.DIW,
+        agencyId: diwAgency.id,
       },
     }),
     prisma.systemUser.create({
@@ -178,7 +201,7 @@ async function main() {
         username: 'inspector-2',
         fullName: 'ผู้ตรวจ DIW สอง',
         roles: ['inspector'],
-        agency: Agency.DIW,
+        agencyId: diwAgency.id,
       },
     }),
     prisma.systemUser.create({
@@ -186,7 +209,7 @@ async function main() {
         username: 'inspector-3',
         fullName: 'ผู้ตรวจ ACFS หนึ่ง',
         roles: ['inspector'],
-        agency: Agency.ACFS,
+        agencyId: acfsAgency.id,
       },
     }),
     prisma.systemUser.create({
@@ -194,12 +217,13 @@ async function main() {
         username: 'inspector-4',
         fullName: 'ผู้ตรวจ ACFS สอง',
         roles: ['inspector'],
-        agency: Agency.ACFS,
+        agencyId: acfsAgency.id,
       },
     }),
     prisma.systemUser.create({
       data: {
         username: 'public-owner',
+        passwordHash: await bcrypt.hash('password', 12),
         fullName: 'เจ้าของกิจการตัวอย่าง',
         roles: ['public'],
       },
@@ -475,7 +499,7 @@ async function main() {
     await prisma.inspectionReport.create({
       data: {
         taskId: tasks[index].id,
-        inspectorId: tasks[index].assignedTo,
+        inspectorId: tasks[index].assignedTo!,
         checklistTemplateId:
           index % 2 === 0 ? diwChecklist.id : acfsChecklist.id,
         result: submitted
@@ -534,7 +558,7 @@ async function main() {
   await prisma.syncLog.createMany({
     data: [
       {
-        agency: Agency.ACFS,
+        agencyId: acfsAgency.id,
         triggeredBy: acfsSupervisor.id,
         status: SyncStatus.SUCCESS,
         recordsUpdated: 5,
@@ -542,7 +566,7 @@ async function main() {
         finishedAt: addDays(-1),
       },
       {
-        agency: Agency.DIW,
+        agencyId: diwAgency.id,
         triggeredBy: admin.id,
         status: SyncStatus.FAILED,
         errorMessage: 'DIW API not available — use CSV import',

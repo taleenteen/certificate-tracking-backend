@@ -48,7 +48,7 @@ export class DashboardService {
       ? {
           zoneId: { in: scope.zoneIds },
           OR: [
-            { license: { licenseType: { agency: scope.agency } } },
+            { license: { licenseType: { agencyId: scope.agencyId } } },
             { licenseId: null },
           ],
         }
@@ -97,8 +97,9 @@ export class DashboardService {
         _count: true,
       }),
       this.prisma.syncLog.findMany({
-        distinct: ['agency'],
-        orderBy: [{ agency: 'asc' }, { startedAt: 'desc' }],
+        distinct: ['agencyId'],
+        orderBy: [{ agencyId: 'asc' }, { startedAt: 'desc' }],
+        include: { agency: { select: { id: true, code: true, nameTh: true } } },
       }),
     ]);
     const userCounts = users

@@ -1,10 +1,8 @@
-import { Agency } from '@prisma/client';
 import {
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
   IsEmail,
-  IsEnum,
   IsIn,
   IsOptional,
   IsString,
@@ -57,17 +55,17 @@ export class CreateUserDto {
   phone?: string;
 
   /**
-   * Roles to grant. Only `inspector`/`supervisor` may be created here.
+   * Roles to grant. `inspector`/`supervisor` for admin; `admin` for super_admin only.
    * @example ["inspector"]
    */
   @IsArray()
   @ArrayNotEmpty()
-  @IsIn(['inspector', 'supervisor'], { each: true })
+  @IsIn(['inspector', 'supervisor', 'admin'], { each: true })
   roles!: string[];
 
-  /** Owning agency. */
-  @IsEnum(Agency)
-  agency!: Agency;
+  /** Owning agency (UUID of the Agency record). */
+  @IsUUID()
+  agencyId!: string;
 
   /** Zone assignments (uuids). */
   @IsArray()
@@ -90,9 +88,9 @@ export class UpdateRolesDto {
 }
 
 export class UpdateAgencyDto {
-  /** New owning agency. */
-  @IsEnum(Agency)
-  agency!: Agency;
+  /** New owning agency (UUID of the Agency record). */
+  @IsUUID()
+  agencyId!: string;
 }
 
 export class UpdateZonesDto {

@@ -1,5 +1,10 @@
 # Frontend Integration Guide — Existing Next.js Wireframe
 
+> ⚠️ **SUPERSEDED (2026-06-16) by [`FRONTEND_GUIDE_AI.md`](./FRONTEND_GUIDE_AI.md).**
+> This file predates D3-extended, D5, D6, and D7 and lacks the auth paths, profile/
+> identity binding, juristic multi-tenant context switching, and join-request flows.
+> Use `FRONTEND_GUIDE_AI.md` (+ the root `GEMINI.md`) instead. Kept for history only.
+
 > **READ `IMPLEMENTATION_GUIDE.md` FIRST.** That file is the master contract (schema §3, API §5, auth §4). This file ONLY governs how to work inside the **existing Next.js codebase**, which already contains wireframe UI for all user-facing features.
 >
 > **PRIME DIRECTIVE: You are integrating, not rebuilding.** The wireframe pages, layout, navigation, and component structure already exist and are approved. Your job is to wire them to the real API, add auth, and fill functional gaps — while preserving the existing structure.

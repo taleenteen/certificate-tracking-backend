@@ -25,7 +25,7 @@ export class AuditService {
       user: isAdminTier(user.roles)
         ? undefined
         : {
-            agency: user.agency!,
+            agencyId: user.agencyId!,
             userZones: { some: { zoneId: { in: user.zoneIds } } },
           },
     };
@@ -34,7 +34,7 @@ export class AuditService {
         where,
         include: {
           user: {
-            select: { id: true, fullName: true, roles: true, agency: true },
+            select: { id: true, fullName: true, roles: true, agencyId: true },
           },
         },
         orderBy: { createdAt: 'desc' },
