@@ -1,0 +1,136 @@
+# =================================================================
+# E-License — Production Deploy
+#
+# Setup (run once on the server):
+#   cp .env.deploy.example .env.deploy
+#   nano .env.deploy          # fill in SERVER_HOST, passwords, JWT keys
+#
+# Deploy / update:
+#   docker compose -f docker-compose.deploy.yml --env-file .env.deploy up -d --build
+#
+# Assumes both repos are cloned as siblings:
+#   /your-dir/certificate-tracking-backend/   ← you are here
+#   /your-dir/certificate-tracking/           ← frontend
+#
+# Ports exposed to the internet:
+#   :80   → app (via nginx)
+#   :9000 → MinIO S3 (needed so presigned file URLs work in browser)
+#   :9001 → MinIO console (optional — close this port in firewall if not needed)
+# =================================================================
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: elicense-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: elicense
+      POSTGRES_USER: elicense
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elicense"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - elicense
+
+  # ── MinIO (file storage) ───────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: elicense-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"   # S3 API — browser follows presigned URLs here
+      - "9001:9001"   # MinIO web console (close in firewall if not needed)
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - elicense
+
+  # ── NestJS API ─────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: production
+    container_name: elicense-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://elicense:${DB_PASSWORD}@db:5432/elicense?schema=public
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_DAYS: 7
+      # CORS — allow requests from the public-facing domain
+      APP_ORIGIN: http://${SERVER_HOST}
+      ADMIN_ORIGIN: http://${SERVER_HOST}
+      # MinIO: internal endpoint for upload/delete; public endpoint for presigned URLs
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://${SERVER_HOST}:9000
+      MINIO_REGION: us-east-1
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: elicense-private
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - elicense
+
+  # ── Next.js frontend (with BFF proxy) ─────────────────────────
+  frontend:
+    build:
+      context: ../certificate-tracking
+      args:
+        # Only public build-time vars go here (baked into JS bundle)
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+    container_name: elicense-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      # Server-side only — never exposed to the browser
+      BACKEND_INTERNAL_URL: http://api:3001
+    depends_on:
+      - api
+    networks:
+      - elicense
+
+  # ── Nginx reverse proxy ────────────────────────────────────────
+  nginx:
+    image: nginx:1.26-alpine
+    container_name: elicense-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.deploy.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+    networks:
+      - elicense
+
+volumes:
+  pgdata:
+  miniodata:
+
+networks:
+  elicense:
+    driver: bridge

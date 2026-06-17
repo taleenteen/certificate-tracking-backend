@@ -27,11 +27,19 @@ export class InspectionService {
   ) {}
 
   private scopedWhere(user: JwtClaims, scope: RequestScope | null) {
-    // Admin tier sees every task (no zone/agency filter).
-    if (isAdminTier(user.roles)) {
+    if (user.roles.includes('super_admin')) {
       return {} satisfies Prisma.InspectionTaskWhereInput;
     }
-    // Officers see all tasks in their zones + agency.
+    if (user.roles.includes('admin')) {
+      // Admin sees only tasks whose license belongs to their own agency.
+      return {
+        OR: [
+          { license: { licenseType: { agencyId: user.agencyId! } } },
+          { licenseId: null },
+        ],
+      } satisfies Prisma.InspectionTaskWhereInput;
+    }
+    // Officers see tasks in their assigned zones + agency.
     return {
       zoneId: { in: scope!.zoneIds },
       OR: [
@@ -117,12 +125,13 @@ export class InspectionService {
     creator: JwtClaims,
     scope: RequestScope | null,
   ) {
-    const admin = isAdminTier(creator.roles);
+    const isSuperAdmin = creator.roles.includes('super_admin');
+    const isAdminOrAbove = isAdminTier(creator.roles);
     const business = await this.prisma.business.findFirst({
       where: {
         id: dto.businessId,
         deletedAt: null,
-        zoneId: admin ? undefined : { in: scope!.zoneIds },
+        zoneId: isAdminOrAbove ? undefined : { in: scope!.zoneIds },
       },
     });
     if (!business) throw new NotFoundException();
@@ -135,7 +144,8 @@ export class InspectionService {
           isActive: true,
           deletedAt: null,
           roles: { has: 'officer' },
-          agencyId: admin ? undefined : scope!.agencyId,
+          // super_admin can cross-assign; admin and officer restricted to their agency
+          agencyId: isSuperAdmin ? undefined : creator.agencyId!,
         },
         include: { userZones: true },
       });
@@ -155,7 +165,7 @@ export class InspectionService {
         where: {
           id: dto.licenseId,
           businessId: business.id,
-          licenseType: admin ? undefined : { agencyId: scope!.agencyId },
+          licenseType: isSuperAdmin ? undefined : { agencyId: creator.agencyId! },
           deletedAt: null,
         },
       });
@@ -218,7 +228,7 @@ export class InspectionService {
     actor: JwtClaims,
     scope: RequestScope | null,
   ) {
-    const admin = isAdminTier(actor.roles);
+    const isSuperAdmin = actor.roles.includes('super_admin');
     const task = await this.prisma.inspectionTask.findFirst({
       where: { id, status: TaskStatus.WAITING_ASSIGNMENT, ...this.scopedWhere(actor, scope) },
       include: { business: true },
@@ -231,7 +241,7 @@ export class InspectionService {
         isActive: true,
         deletedAt: null,
         roles: { has: 'officer' },
-        agencyId: admin ? undefined : scope!.agencyId,
+        agencyId: isSuperAdmin ? undefined : actor.agencyId!,
       },
       include: { userZones: true },
     });

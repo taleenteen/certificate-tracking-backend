@@ -13,14 +13,25 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private readonly bucket = process.env.MINIO_BUCKET ?? 'elicense-private';
+  private readonly s3Creds = {
+    accessKeyId: process.env.MINIO_ACCESS_KEY ?? 'elicense',
+    secretAccessKey: process.env.MINIO_SECRET_KEY ?? 'change-me',
+  };
+  private readonly region = process.env.MINIO_REGION ?? 'us-east-1';
+  // Internal endpoint for upload/delete (Docker service name resolves inside compose).
   private readonly client = new S3Client({
     endpoint: process.env.MINIO_ENDPOINT ?? 'http://localhost:9000',
-    region: process.env.MINIO_REGION ?? 'us-east-1',
+    region: this.region,
     forcePathStyle: true,
-    credentials: {
-      accessKeyId: process.env.MINIO_ACCESS_KEY ?? 'elicense',
-      secretAccessKey: process.env.MINIO_SECRET_KEY ?? 'change-me',
-    },
+    credentials: this.s3Creds,
+  });
+  // Public endpoint for presigned URL generation. The URL must be reachable from
+  // the browser. In production set MINIO_PUBLIC_ENDPOINT=http://<server-ip>:9000.
+  private readonly presignClient = new S3Client({
+    endpoint: process.env.MINIO_PUBLIC_ENDPOINT ?? process.env.MINIO_ENDPOINT ?? 'http://localhost:9000',
+    region: this.region,
+    forcePathStyle: true,
+    credentials: this.s3Creds,
   });
 
   async onModuleInit() {
@@ -67,7 +78,7 @@ export class StorageService implements OnModuleInit {
 
   presign(objectKey: string) {
     return getSignedUrl(
-      this.client,
+      this.presignClient,
       new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
       { expiresIn: 600 },
     );

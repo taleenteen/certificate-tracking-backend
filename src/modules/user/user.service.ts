@@ -22,7 +22,7 @@ export class UserService {
   list(query: UserQueryDto, actor: JwtClaims) {
     const where: Prisma.SystemUserWhereInput = {
       deletedAt: null,
-      agencyId: isAdminTier(actor.roles) ? undefined : actor.agencyId!,
+      agencyId: actor.roles.includes('super_admin') ? undefined : actor.agencyId!,
       roles: query.role ? { has: query.role } : undefined,
       isActive: query.status,
       userZones: query.zoneId ? { some: { zoneId: query.zoneId } } : undefined,
@@ -157,7 +157,7 @@ export class UserService {
       where: {
         id,
         deletedAt: null,
-        agencyId: isAdminTier(actor.roles) ? undefined : actor.agencyId!,
+        agencyId: actor.roles.includes('super_admin') ? undefined : actor.agencyId!,
       },
     });
     if (!target) throw new NotFoundException();

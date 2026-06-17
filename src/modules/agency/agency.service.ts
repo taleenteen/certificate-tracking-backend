@@ -7,20 +7,49 @@ export class AgencyService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list() {
-    const agencies = await this.prisma.agency.findMany({
-      orderBy: { code: 'asc' },
-    });
-    const typeCounts = await this.prisma.licenseType.groupBy({
-      by: ['agencyId'],
-      where: { isActive: true },
-      _count: { id: true },
-    });
-    const countMap = Object.fromEntries(
+    const [agencies, typeCounts, users, licenses] = await Promise.all([
+      this.prisma.agency.findMany({ orderBy: { code: 'asc' } }),
+      this.prisma.licenseType.groupBy({
+        by: ['agencyId'],
+        where: { isActive: true },
+        _count: { id: true },
+      }),
+      this.prisma.systemUser.findMany({
+        where: { deletedAt: null, isActive: true, agencyId: { not: null } },
+        select: { agencyId: true, roles: true },
+      }),
+      this.prisma.license.findMany({
+        where: { deletedAt: null },
+        select: { licenseType: { select: { agencyId: true } } },
+      }),
+    ]);
+
+    const typeCountMap = Object.fromEntries(
       typeCounts.map((row) => [row.agencyId, row._count.id]),
     );
+
+    const adminCountMap: Record<string, number> = {};
+    const officerCountMap: Record<string, number> = {};
+    for (const u of users) {
+      if (!u.agencyId) continue;
+      if (u.roles.includes('admin'))
+        adminCountMap[u.agencyId] = (adminCountMap[u.agencyId] ?? 0) + 1;
+      if (u.roles.includes('officer'))
+        officerCountMap[u.agencyId] = (officerCountMap[u.agencyId] ?? 0) + 1;
+    }
+
+    const licenseCountMap: Record<string, number> = {};
+    for (const l of licenses) {
+      const aid = l.licenseType.agencyId;
+      licenseCountMap[aid] = (licenseCountMap[aid] ?? 0) + 1;
+    }
+
     return agencies.map((a) => ({
       ...a,
-      licenseTypeCount: countMap[a.id] ?? 0,
+      licenseTypeCount: typeCountMap[a.id] ?? 0,
+      adminCount: adminCountMap[a.id] ?? 0,
+      officerCount: officerCountMap[a.id] ?? 0,
+      licenseCount: licenseCountMap[a.id] ?? 0,
     }));
   }
 
