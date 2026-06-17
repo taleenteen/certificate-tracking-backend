@@ -4,6 +4,7 @@ WORKDIR /usr/src/app
 
 FROM base AS development
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY . .
 RUN npx prisma generate
@@ -14,6 +15,7 @@ CMD ["npm", "run", "start:dev"]
 
 FROM base AS build
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY . .
 # Keep ALL node_modules (including devDeps: prisma CLI, ts-node) so the
