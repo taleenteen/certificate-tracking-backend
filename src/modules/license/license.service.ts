@@ -2,7 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { LicenseStatus, TaskStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { CreateLicenseTypeDto, UpdateLicenseTypeDto } from './license.dto';
+import {
+  CreateLicenseTypeDto,
+  UpdateLicenseStatusDto,
+  UpdateLicenseTypeDto,
+} from './license.dto';
 
 const STATUS_META: Array<{
   statusCode: string;
@@ -62,6 +66,18 @@ export class LicenseService {
       licenseStatuses: STATUS_META,
       taskStatuses: TASK_STATUS_META,
     };
+  }
+
+  async updateStatus(id: string, dto: UpdateLicenseStatusDto) {
+    const exists = await this.prisma.license.findUnique({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException();
+    return this.prisma.license.update({
+      where: { id },
+      data: { status: dto.status as LicenseStatus },
+    });
   }
 
   async findOne(id: string, minimal = false) {

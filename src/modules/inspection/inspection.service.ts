@@ -46,6 +46,7 @@ export class InspectionService {
       where: { ...this.scopedWhere(user, scope), status },
       include: {
         business: true,
+        zone: true,
         license: { include: { licenseType: true } },
         assignee: {
           select: { id: true, fullName: true, agencyId: true, roles: true },
@@ -54,6 +55,40 @@ export class InspectionService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async findTaskByLicense(licenseId: string, user: JwtClaims, scope: RequestScope | null) {
+    const scopeFilter = this.scopedWhere(user, scope);
+    // Officers can always see tasks assigned directly to them, regardless of
+    // zone/agency scope (admin may cross-assign any license to any officer).
+    const where: Prisma.InspectionTaskWhereInput = isAdminTier(user.roles)
+      ? { licenseId }
+      : {
+          licenseId,
+          OR: [
+            { assignedTo: user.sub },
+            scopeFilter as Prisma.InspectionTaskWhereInput,
+          ],
+        };
+    const task = await this.prisma.inspectionTask.findFirst({
+      where,
+      include: {
+        business: true,
+        zone: true,
+        license: { include: { licenseType: true } },
+        assignee: {
+          select: { id: true, fullName: true, agencyId: true, roles: true },
+        },
+        reports: {
+          include: { checklistTemplate: true, documents: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!task) throw new NotFoundException();
+    return task;
   }
 
   async findTask(id: string, user: JwtClaims, scope: RequestScope | null) {
@@ -309,7 +344,7 @@ export class InspectionService {
       data: {
         result: dto.result,
         score: dto.score,
-        findings: dto.findings as Prisma.InputJsonValue,
+        findings: dto.findings !== undefined ? (dto.findings as Prisma.InputJsonValue) : undefined,
         summaryNote: dto.summaryNote,
         checklistTemplateId: dto.checklistTemplateId,
         isDraft: true,

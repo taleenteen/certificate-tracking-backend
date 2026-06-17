@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MinLength,
 } from 'class-validator';
 
 export class UserQueryDto {
@@ -71,6 +72,13 @@ export class CreateUserDto {
   @IsArray()
   @IsUUID('4', { each: true })
   zoneIds: string[] = [];
+
+  /** Optional initial password. If provided, sets this as the password and does not force a change.
+   *  If omitted alongside a username, a random temp password is generated and mustChangePassword is set. */
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  initialPassword?: string;
 }
 
 export class UpdateRolesDto {

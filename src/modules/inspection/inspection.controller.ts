@@ -68,10 +68,27 @@ export class InspectionController {
 
   @Roles('officer', 'admin')
   @ApiOperation({
+    summary: 'Get the latest inspection task for a license',
+    description: 'Returns the most recent task linked to the given license ID.',
+  })
+  @ApiParam({ name: 'licenseId', description: 'License uuid', format: 'uuid' })
+  @ApiOkResponse({ description: 'The task with related data.' })
+  @ApiNotFoundResponse({ description: 'No task found for this license.' })
+  @Get('inspection-tasks/by-license/:licenseId')
+  findTaskByLicense(
+    @Param('licenseId') licenseId: string,
+    @CurrentUser() user: JwtClaims,
+    @Req() request: Request,
+  ) {
+    return this.inspections.findTaskByLicense(licenseId, user, request.scope!);
+  }
+
+  @Roles('officer', 'admin')
+  @ApiOperation({
     summary: 'Get an inspection task (scoped)',
     description:
       'Includes business, zone, license, assignee, and the latest report. ' +
-      'Returns 404 if outside the caller’s scope.',
+      "Returns 404 if outside the caller's scope.",
   })
   @ApiParam({ name: 'id', description: 'Task uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The task with related data.' })

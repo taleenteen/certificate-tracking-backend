@@ -58,25 +58,28 @@ export class CancelTaskDto {
 }
 
 export class UpdateReportDto {
-  /** Overall inspection result. */
+  /** Overall inspection result. Required at submit time; optional for draft saves. */
+  @IsOptional()
   @IsEnum(ReportResult)
-  result!: ReportResult;
+  result?: ReportResult;
 
   /**
    * Score 0–100. Compared against the checklist passing score.
    * @example 85
    */
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   @Max(100)
-  score!: number;
+  score?: number;
 
   /**
    * Checklist answers, e.g. `[{ "no": 1, "answer": true, "note": "ok" }]`.
    */
+  @IsOptional()
   @IsArray()
-  findings!: unknown[];
+  findings?: unknown[];
 
   /** Free-text summary (Thai). */
   @IsOptional()
@@ -84,8 +87,9 @@ export class UpdateReportDto {
   summaryNote?: string;
 
   /** Checklist template used for this report (uuid). */
+  @IsOptional()
   @IsUUID()
-  checklistTemplateId!: string;
+  checklistTemplateId?: string;
 }
 
 export class ReturnReportDto {

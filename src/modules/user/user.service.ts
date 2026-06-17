@@ -57,9 +57,9 @@ export class UserService {
     if (dto.roles.includes('admin') && !actor?.roles.includes('super_admin')) {
       throw new ForbiddenException('Only super_admin may create admin accounts');
     }
-    const tempPassword = dto.username
-      ? `Tmp-${randomBytes(8).toString('base64url')}!`
-      : undefined;
+    // Use caller-supplied password if given; otherwise generate a temp one (forces change on first login).
+    const chosenPassword = dto.initialPassword ?? (dto.username ? `Tmp-${randomBytes(8).toString('base64url')}!` : undefined);
+    const tempPassword = !dto.initialPassword && dto.username ? chosenPassword : undefined;
     const user = await this.prisma.systemUser.create({
       data: {
         fullName: dto.fullName,
@@ -68,7 +68,7 @@ export class UserService {
         phone: dto.phone,
         roles: dto.roles,
         agencyId: dto.agencyId,
-        passwordHash: tempPassword ? await bcrypt.hash(tempPassword, 12) : null,
+        passwordHash: chosenPassword ? await bcrypt.hash(chosenPassword, 12) : null,
         mustChangePassword: !!tempPassword,
         userZones: {
           create: dto.zoneIds.map((zoneId) => ({ zoneId })),

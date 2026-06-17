@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -11,7 +11,11 @@ import {
 } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CreateLicenseTypeDto, UpdateLicenseTypeDto } from './license.dto';
+import {
+  CreateLicenseTypeDto,
+  UpdateLicenseStatusDto,
+  UpdateLicenseTypeDto,
+} from './license.dto';
 import { LicenseService } from './license.service';
 
 @ApiTags('Licenses')
@@ -64,6 +68,16 @@ export class LicenseController {
   @Get('statuses')
   listStatuses() {
     return this.licenses.listStatuses();
+  }
+
+  @Roles('officer', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Update license status (agency staff)' })
+  @ApiParam({ name: 'id', description: 'License uuid', format: 'uuid' })
+  @ApiOkResponse({ description: 'Updated license.' })
+  @ApiNotFoundResponse({ description: 'License not found.' })
+  @Patch('licenses/:id/status')
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateLicenseStatusDto) {
+    return this.licenses.updateStatus(id, dto);
   }
 
   @Public()

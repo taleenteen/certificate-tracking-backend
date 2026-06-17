@@ -1,10 +1,12 @@
 import {
   IsBoolean,
+  IsEnum,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -46,6 +48,16 @@ export class CreateLicenseTypeDto {
   @IsOptional()
   @IsString()
   description?: string;
+}
+
+export class UpdateLicenseStatusDto {
+  @IsEnum(['ACTIVE', 'SUSPENDED', 'REVOKED', 'EXPIRED', 'PENDING'])
+  status!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }
 
 export class UpdateLicenseTypeDto {

@@ -62,7 +62,7 @@ async function main() {
 
   await resetDatabase();
 
-  const [diwAgency, acfsAgency] = await Promise.all([
+  const [diwAgency, acfsAgency, dbdAgency, fdaAgency] = await Promise.all([
     prisma.agency.create({
       data: {
         code: 'DIW',
@@ -79,6 +79,24 @@ async function main() {
         nameEn: 'National Bureau of Agricultural Commodity and Food Standards',
         dataSource: AgencyDataSource.API,
         apiStatus: AgencyApiStatus.CONNECTED,
+      },
+    }),
+    prisma.agency.create({
+      data: {
+        code: 'DBD',
+        nameTh: 'กรมพัฒนาธุรกิจการค้า',
+        nameEn: 'Department of Business Development',
+        dataSource: AgencyDataSource.MANUAL_IMPORT,
+        apiStatus: AgencyApiStatus.MANUAL,
+      },
+    }),
+    prisma.agency.create({
+      data: {
+        code: 'FDA',
+        nameTh: 'สำนักงานคณะกรรมการอาหารและยา',
+        nameEn: 'Food and Drug Administration',
+        dataSource: AgencyDataSource.MANUAL_IMPORT,
+        apiStatus: AgencyApiStatus.DISCONNECTED,
       },
     }),
   ]);
@@ -126,6 +144,50 @@ async function main() {
         },
       }),
     ),
+    prisma.licenseType.create({
+      data: {
+        code: 'DBD_COMMERCE',
+        nameTh: 'ใบอนุญาตประกอบธุรกิจ',
+        nameEn: 'Business Operation License',
+        agencyId: dbdAgency.id,
+        validityYears: 3,
+        feeThb: 1000,
+        prerequisiteTypeIds: [],
+      },
+    }),
+    prisma.licenseType.create({
+      data: {
+        code: 'DBD_ECOMMERCE',
+        nameTh: 'ใบอนุญาตพาณิชย์อิเล็กทรอนิกส์',
+        nameEn: 'E-Commerce License',
+        agencyId: dbdAgency.id,
+        validityYears: 1,
+        feeThb: 500,
+        prerequisiteTypeIds: [],
+      },
+    }),
+    prisma.licenseType.create({
+      data: {
+        code: 'FDA_FOOD',
+        nameTh: 'ใบอนุญาตผลิตอาหาร',
+        nameEn: 'Food Production License',
+        agencyId: fdaAgency.id,
+        validityYears: 2,
+        feeThb: 2000,
+        prerequisiteTypeIds: [],
+      },
+    }),
+    prisma.licenseType.create({
+      data: {
+        code: 'FDA_DRUG',
+        nameTh: 'ใบอนุญาตขายยา',
+        nameEn: 'Drug Sales License',
+        agencyId: fdaAgency.id,
+        validityYears: 1,
+        feeThb: 1500,
+        prerequisiteTypeIds: [],
+      },
+    }),
   ]);
 
   const zoneSpecs = [
@@ -250,6 +312,16 @@ async function main() {
     joinRequester,
   ] = users;
 
+  const officerLogin = await prisma.systemUser.create({
+    data: {
+      username: 'officer-login',
+      passwordHash: await bcrypt.hash('password', 12),
+      fullName: 'เจ้าหน้าที่ DIW (Login)',
+      roles: ['officer'],
+      agencyId: diwAgency.id,
+    },
+  });
+
   // A plain ADMIN account (below super_admin) for testing the role hierarchy.
   // Admins can assign officer roles but not create other admins.
   await prisma.systemUser.create({
@@ -258,6 +330,7 @@ async function main() {
       passwordHash: await bcrypt.hash(adminPassword, 12),
       fullName: 'ผู้ดูแลระบบ',
       roles: ['admin'],
+      agencyId: diwAgency.id,
       totpSecret: 'JBSWY3DPEHPK3PXP',
       mustChangePassword: false,
     },
@@ -320,6 +393,7 @@ async function main() {
       [acfsOfficer1.id, zones[3].id],
       [acfsOfficer2.id, zones[3].id],
       [acfsOfficer2.id, zones[4].id],
+      [officerLogin.id, zones[0].id],
     ].map(([userId, zoneId]) => ({ userId, zoneId })),
   });
 
@@ -380,6 +454,21 @@ async function main() {
     );
   }
 
+  const officerBusiness = await prisma.business.create({
+    data: {
+      nameTh: 'สถานประกอบการเจ้าหน้าที่ (DIW)',
+      juristicPersonId: juristicPersons[0].id,
+      ownerUserId: officerLogin.id,
+      zoneId: zones[0].id,
+      address: '999 ถนนอุตสาหกรรม จังหวัดกรุงเทพมหานคร',
+      province: 'กรุงเทพมหานคร',
+      latitude: 13.7563,
+      longitude: 100.5018,
+      geocodedAt: new Date(),
+      phone: '021234567',
+    },
+  });
+
   const statusPlan: LicenseStatus[] = [
     ...Array<LicenseStatus>(20).fill(LicenseStatus.ACTIVE),
     ...Array<LicenseStatus>(4).fill(LicenseStatus.SUSPENDED),
@@ -418,6 +507,44 @@ async function main() {
                 ? 'MOCK_OVERDUE'
                 : 'ระงับชั่วคราวเพื่อทดสอบระบบ'
               : null,
+        },
+      }),
+    );
+  }
+
+  const officerLicenseStatuses: LicenseStatus[] = [
+    ...Array<LicenseStatus>(9).fill(LicenseStatus.ACTIVE),
+    ...Array<LicenseStatus>(3).fill(LicenseStatus.SUSPENDED),
+    ...Array<LicenseStatus>(2).fill(LicenseStatus.EXPIRED),
+    LicenseStatus.PENDING,
+  ];
+  const officerLicenses: License[] = [];
+  for (let i = 0; i < 15; i++) {
+    const type = licenseTypes[i % licenseTypes.length];
+    const isRng4 = type.code === 'RNG4';
+    const status = officerLicenseStatuses[i];
+    const issueDate = addDays(-300 - i * 15);
+    const expireDate = isRng4
+      ? null
+      : i === 13
+        ? addDays(10)
+        : i === 14
+          ? addDays(22)
+          : status === LicenseStatus.EXPIRED
+            ? addDays(-30 - i)
+            : addDays(type.validityYears * 365);
+    officerLicenses.push(
+      await prisma.license.create({
+        data: {
+          licenseNo: `OFC-${type.code}-${String(i + 1).padStart(4, '0')}`,
+          businessId: officerBusiness.id,
+          licenseTypeId: type.id,
+          status,
+          issueDate,
+          expireDate,
+          suspendedAt: status === LicenseStatus.SUSPENDED ? addDays(-5) : null,
+          suspensionReason:
+            status === LicenseStatus.SUSPENDED ? 'ระงับชั่วคราวเพื่อทดสอบระบบ' : null,
         },
       }),
     );
@@ -485,6 +612,34 @@ async function main() {
             taskStatuses[index] === TaskStatus.ASSIGNED ? null : addDays(-3),
           completedAt:
             taskStatuses[index] === TaskStatus.APPROVED ? addDays(-1) : null,
+        },
+      }),
+    );
+  }
+
+  // Inspection tasks for officer-login's licenses so the inspection page works
+  const officerTaskSpecs: { licenseIdx: number; status: TaskStatus }[] = [
+    { licenseIdx: 0, status: TaskStatus.ASSIGNED },
+    { licenseIdx: 1, status: TaskStatus.IN_PROGRESS },
+    { licenseIdx: 2, status: TaskStatus.PENDING_REVIEW },
+    { licenseIdx: 3, status: TaskStatus.APPROVED },
+    { licenseIdx: 4, status: TaskStatus.RETURNED },
+  ];
+  for (let i = 0; i < officerTaskSpecs.length; i++) {
+    const { licenseIdx, status } = officerTaskSpecs[i];
+    tasks.push(
+      await prisma.inspectionTask.create({
+        data: {
+          taskNo: `T-${new Date().getFullYear()}-${String(taskStatuses.length + i + 1).padStart(4, '0')}`,
+          businessId: officerBusiness.id,
+          licenseId: officerLicenses[licenseIdx]?.id,
+          zoneId: officerBusiness.zoneId,
+          assignedTo: officerLogin.id,
+          createdBy: diwOfficerSr.id,
+          status,
+          dueDate: addDays(14 + i),
+          startedAt: status === TaskStatus.ASSIGNED ? null : addDays(-5),
+          completedAt: status === TaskStatus.APPROVED ? addDays(-1) : null,
         },
       }),
     );
@@ -586,6 +741,7 @@ async function main() {
   console.log(
     'mTokens: mock-officer-1, mock-officer-3, mock-officer-diw, mock-officer-acfs, mock-public-owner',
   );
+  console.log('Officer (Password): officer-login / password');
 }
 
 main()
