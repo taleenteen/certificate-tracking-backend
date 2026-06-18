@@ -533,8 +533,12 @@ export class AuthService {
       throw new HttpException('Account temporarily locked', HttpStatus.LOCKED);
     }
     const passwordValid = await bcrypt.compare(password, user.passwordHash);
+    // PROTOTYPE: TOTP bypass enabled in any environment when TOTP_BYPASS=true.
+    // Lets `000000` pass so the demo doesn't require an authenticator app.
+    // TODO: remove TOTP_BYPASS before any real production use.
     const totpValid =
-      (process.env.NODE_ENV === 'development' && totpCode === '000000') ||
+      ((process.env.NODE_ENV === 'development' || process.env.TOTP_BYPASS === 'true') &&
+        totpCode === '000000') ||
       (!!user.totpSecret && authenticator.check(totpCode, user.totpSecret));
     if (!passwordValid || !totpValid) {
       const attempts = user.failedLoginCount + 1;

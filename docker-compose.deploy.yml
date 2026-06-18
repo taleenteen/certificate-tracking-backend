@@ -92,6 +92,8 @@ services:
       PORT: 3001
       # Allow the entrypoint to seed the DB on first boot (only runs when empty)
       ALLOW_SEED: "true"
+      # PROTOTYPE: accept TOTP code 000000 (no authenticator app needed). Remove for real prod.
+      TOTP_BYPASS: "true"
       DATABASE_URL: postgresql://elicense:${DB_PASSWORD}@db:5432/elicense?schema=public
       JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64}
       JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
