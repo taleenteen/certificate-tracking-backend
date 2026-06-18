@@ -31,6 +31,8 @@ COPY --from=build --chown=app:app /usr/src/app/node_modules ./node_modules
 COPY --from=build --chown=app:app /usr/src/app/dist ./dist
 COPY --from=build --chown=app:app /usr/src/app/prisma ./prisma
 COPY --from=build --chown=app:app /usr/src/app/package.json ./package.json
+COPY --from=build --chown=app:app /usr/src/app/prisma.config.ts ./prisma.config.ts
+COPY --from=build --chown=app:app /usr/src/app/tsconfig.json ./tsconfig.json
 COPY --chown=app:app docker-entrypoint.prod.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER app
