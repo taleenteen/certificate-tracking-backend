@@ -56,8 +56,12 @@ async function resetDatabase() {
 }
 
 async function main() {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Refusing to seed production');
+  // Production guard: seeding wipes the DB via resetDatabase(). Refuse in
+  // production UNLESS explicitly opted in with ALLOW_SEED=true. The Docker
+  // entrypoint additionally only runs the seed when system_users is empty,
+  // so this combination only ever seeds a truly fresh database.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'true') {
+    throw new Error('Refusing to seed production (set ALLOW_SEED=true to override)');
   }
 
   await resetDatabase();
