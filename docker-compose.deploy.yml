@@ -131,6 +131,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3003
+      # PROTOTYPE: site is served over plain HTTP (no TLS), so auth cookies must
+      # NOT be marked Secure or the browser drops them → every authed call 401s.
+      # Set to "true" (or remove) once the site is behind HTTPS.
+      COOKIE_SECURE: "false"
       # Server-side only — never exposed to the browser
       BACKEND_INTERNAL_URL: http://api:3001
     depends_on:
