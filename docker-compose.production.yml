@@ -21,10 +21,10 @@ services:
     build:
       context: ../certificate-tracking
       dockerfile_inline: |
-        FROM oven/bun:1.1 AS deps
+        FROM node:22-bookworm-slim AS deps
         WORKDIR /app
-        COPY package.json bun.lock ./
-        RUN bun install --frozen-lockfile
+        COPY package.json package-lock.json ./
+        RUN npm ci
 
         FROM deps AS builder
         WORKDIR /app
@@ -32,12 +32,8 @@ services:
         ARG NEXT_PUBLIC_API_URL
         ARG NEXT_PUBLIC_DGA_REDIRECT_URI
         ARG NEXT_PUBLIC_MAPBOX_TOKEN
-        ENV BACKEND_INTERNAL_URL=$$BACKEND_INTERNAL_URL
-        ENV NEXT_PUBLIC_API_URL=$$NEXT_PUBLIC_API_URL
-        ENV NEXT_PUBLIC_DGA_REDIRECT_URI=$$NEXT_PUBLIC_DGA_REDIRECT_URI
-        ENV NEXT_PUBLIC_MAPBOX_TOKEN=$$NEXT_PUBLIC_MAPBOX_TOKEN
         COPY . .
-        RUN bun run build
+        RUN BACKEND_INTERNAL_URL="$$BACKEND_INTERNAL_URL" NEXT_PUBLIC_API_URL="$$NEXT_PUBLIC_API_URL" NEXT_PUBLIC_DGA_REDIRECT_URI="$$NEXT_PUBLIC_DGA_REDIRECT_URI" NEXT_PUBLIC_MAPBOX_TOKEN="$$NEXT_PUBLIC_MAPBOX_TOKEN" npm run build
 
         FROM node:22-bookworm-slim AS runner
         WORKDIR /app
