@@ -607,10 +607,12 @@ async function main() {
 
   for (let index = 3; index < tasks.length; index += 1) {
     const submitted = tasks[index].status !== TaskStatus.IN_PROGRESS;
-    const reviewed = (<TaskStatus[]>[
-      TaskStatus.APPROVED,
-      TaskStatus.RETURNED,
-    ]).includes(tasks[index].status);
+    const reviewed = (
+      [
+        TaskStatus.APPROVED,
+        TaskStatus.RETURNED,
+      ] as TaskStatus[]
+    ).includes(tasks[index].status);
     await prisma.inspectionReport.create({
       data: {
         taskId: tasks[index].id,
