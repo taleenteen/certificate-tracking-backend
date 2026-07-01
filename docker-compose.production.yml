@@ -1,8 +1,8 @@
 # Production all-in-one stack for Ubuntu.
 #
 # Expected repository layout on the server:
-#   ~/Backend/certificate-tracking-backend
-#   ~/Frontend/certificate-tracking
+#   ~/certicate-tracking/certificate-tracking-backend
+#   ~/certicate-tracking/certificate-tracking
 #
 # Run from this backend directory:
 #   PUBLIC_HOST=e-license.govcenter.co \
@@ -47,7 +47,7 @@ services:
 
   frontend:
     build:
-      context: ../../Frontend/certificate-tracking
+      context: ../certificate-tracking
       dockerfile_inline: |
         FROM oven/bun:1.1 AS deps
         WORKDIR /app
