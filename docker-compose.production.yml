@@ -92,7 +92,6 @@ services:
         COPY --from=builder /app/node_modules ./node_modules
         COPY --from=builder /app/dist ./dist
         COPY --from=builder /app/prisma ./prisma
-        COPY --from=builder /app/src ./src
         COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
         EXPOSE 3001
         CMD ["sh", "-c", "npx prisma migrate deploy && if node -e \"const {Pool}=require('pg'); const pool=new Pool({connectionString:process.env.DATABASE_URL}); pool.query('select count(*)::int as count from system_users').then(r=>pool.end().then(()=>process.exit(Number(r.rows[0].count)===0?0:2))).catch(e=>{console.error(e); process.exit(1);});\"; then echo 'Database is empty; running seed'; ALLOW_SEED=true npx prisma db seed; else echo 'Database already has users; skipping seed'; fi && node dist/main"]

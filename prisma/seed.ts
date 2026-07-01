@@ -16,11 +16,34 @@ import {
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
-import { storeCitizenId, isValidThaiCitizenId, last4 } from '../src/common/crypto/citizen-id';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 const adminPassword = 'ChangeMe-2026!';
+
+const normalizeCitizenId = (raw: string) => raw.replace(/[\s-]/g, '');
+
+const isValidThaiCitizenId = (raw: string) => {
+  const normalized = normalizeCitizenId(raw);
+  if (!/^\d{13}$/.test(normalized)) return false;
+  const digits = normalized.split('').map(Number);
+  let sum = 0;
+  for (let index = 0; index < 12; index += 1) {
+    sum += digits[index] * (13 - index);
+  }
+  const check = (11 - (sum % 11)) % 10;
+  return check === digits[12];
+};
+
+const storeCitizenId = (raw: string) => {
+  const normalized = normalizeCitizenId(raw);
+  if (!isValidThaiCitizenId(raw)) {
+    throw new Error('Invalid Thai citizen ID (checksum failed)');
+  }
+  return normalized;
+};
+
+const last4 = (raw: string) => normalizeCitizenId(raw).slice(-4);
 
 const addDays = (days: number) => {
   const date = new Date();
