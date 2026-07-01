@@ -84,7 +84,6 @@ export class ExportService {
         task: isAdminTier(user.roles)
           ? undefined
           : {
-              zoneId: { in: scope?.zoneIds ?? [] },
               OR: [
                 { license: { licenseType: { agencyId: scope?.agencyId } } },
                 { licenseId: null },

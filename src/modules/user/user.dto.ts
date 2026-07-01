@@ -16,11 +16,6 @@ export class UserQueryDto {
   @IsIn(['public', 'officer', 'admin'])
   role?: string;
 
-  /** Filter by assigned zone (uuid). */
-  @IsOptional()
-  @IsUUID()
-  zoneId?: string;
-
   /** Filter by active status. */
   @IsOptional()
   @IsBoolean()
@@ -56,7 +51,7 @@ export class CreateUserDto {
   phone?: string;
 
   /**
-   * Roles to grant. `officer`/`officer` for admin; `admin` for super_admin only.
+   * Roles to grant. Admin may grant public/officer; super_admin may grant admin.
    * @example ["officer"]
    */
   @IsArray()
@@ -67,11 +62,6 @@ export class CreateUserDto {
   /** Owning agency (UUID of the Agency record). */
   @IsUUID()
   agencyId!: string;
-
-  /** Zone assignments (uuids). */
-  @IsArray()
-  @IsUUID('4', { each: true })
-  zoneIds: string[] = [];
 
   /** Optional initial password. If provided, sets this as the password and does not force a change.
    *  If omitted alongside a username, a random temp password is generated and mustChangePassword is set. */
@@ -84,8 +74,8 @@ export class CreateUserDto {
 export class UpdateRolesDto {
   /**
    * Replacement role set. Only a super_admin may assign `admin`/`super_admin`;
-   * an admin may assign `public`/`officer`/`officer`.
-   * @example ["officer","officer"]
+   * an admin may assign `public`/`officer`.
+   * @example ["officer"]
    */
   @IsArray()
   @ArrayNotEmpty()
@@ -99,11 +89,4 @@ export class UpdateAgencyDto {
   /** New owning agency (UUID of the Agency record). */
   @IsUUID()
   agencyId!: string;
-}
-
-export class UpdateZonesDto {
-  /** Replacement set of zone ids (uuids). */
-  @IsArray()
-  @IsUUID('4', { each: true })
-  zoneIds!: string[];
 }

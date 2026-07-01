@@ -14,6 +14,120 @@
 
 ## 0. Change Log
 
+- **2026-07-02 (production compose deploy)** — Added
+  `docker-compose.production.yml`, an all-in-one Ubuntu production stack using
+  inline Dockerfiles for frontend/backend plus Postgres, MinIO, and Caddy HTTPS
+  reverse proxy. Backend runs `prisma migrate deploy` before API start and seeds
+  only when `system_users` is empty; frontend talks to backend via the internal
+  Docker network.
+- **2026-07-02 (DGA OIDC logout)** — Added encrypted server-side storage for
+  DGA provider `id_token` on `UserSession` (`provider_id_token`) and return an
+  optional `endSessionUrl` from `POST /api/auth/logout` for sessions created by
+  DGA OIDC. Logout still revokes the local API session first; frontend redirects
+  to DGA `/connect/endsession` only when `endSessionUrl` is present.
+- **2026-07-02 (DB-backed DGA OIDC state)** — Added `DgaOidcState`
+  (`dga_oidc_states`) plus migration `20260702000000_dga_oidc_states` so DGA
+  OIDC state nonces are stored in PostgreSQL and consumed atomically on callback.
+  This replaces the process-local nonce store and supports multi-instance API
+  deployments without sticky routing.
+- **2026-07-02 (DGA production hardening)** — Hardened the DGA OIDC login flow
+  for production use: backend now allowlists callback redirect URIs, validates
+  requested scopes, records generated state nonces, and consumes each state once
+  on callback to block replay. Frontend callback now requires the tab's stored
+  DGA state and redirect URI before sending `code` to the backend. DGA provider
+  failures now log sanitized status/error metadata only. Added unit coverage
+  for redirect allowlist, scope validation, and one-time state consume.
+- **2026-07-02 (DGA UserInfo mapping tolerance)** — Updated real DGA UserInfo
+  mapping to accept `czp_user`, standard OIDC `sub`, or `citizen_id` as the
+  provider subject. This matches the requested scopes more closely after a live
+  callback confirmed token exchange can succeed but the previous mapper rejected
+  the UserInfo payload shape. A subsequent live callback completed end-to-end
+  and issued a local `public` session for the DGA user.
+- **2026-07-02 (DGA token hash correction)** — Aligned the real DGA OIDC
+  `/connect/token` client authentication hash with the provided DGA sample:
+  `md5(secret + "EGA")`, then six more rounds of `md5(previous + "EGA")`, and
+  sends the resulting credential using the sample's `basic` authorization
+  scheme. Manual token debug changed from `invalid_client` to `invalid_grant`,
+  confirming client authentication now passes for an already-expired/used code.
+- **2026-07-02 (DGA OIDC scope update)** — Updated DGA/Tang Rat authorize
+  scope examples and local configuration to request
+  `openid citizen_id given_name family_name`, with `openid` first as required
+  by OpenID Connect.
+- **2026-07-02 (DGA Digital ID OIDC flow)** — Added a backend OIDC-compatible
+  Tang Rat/DGA Digital ID flow: `POST /api/auth/dga/authorize` returns a signed
+  10-minute state plus DGA authorize URL, and `POST /api/auth/dga/callback`
+  validates state, exchanges a mock authorization code, calls mock UserInfo, and
+  reuses the existing Tang Rat identity-binding/session issuance logic. Added
+  `MockDgaOidcProvider`, DGA OIDC env placeholders, frontend handoff docs, and
+  provider unit coverage. Added `RealDgaOidcProvider` behind `DGA_OIDC_MODE=real`
+  for UAT/Production token and UserInfo calls.
+- **2026-07-02 (legacy officer result payload tolerance)** — `POST
+  /api/officer/inspections` now accepts a legacy `items[].result` field without
+  enum validation and ignores it, so old frontend forms that still include
+  pass/fail state do not block submission. Added DTO validation coverage for
+  this compatibility path.
+- **2026-07-02 (cross-agency officer reporting bypass)** — Updated the officer
+  reporting workflow so `GET /api/officer/licenses` can show licenses across
+  agencies by default and `POST /api/officer/inspections` can submit report
+  items for licenses from any agency under the selected business. `agencyId` is
+  now an optional license-agency filter for the search endpoint only; submitted
+  reports still store the officer's own agency for audit.
+- **2026-07-01 (officer inspection result contract)** — Updated
+  `POST /api/officer/inspections` so frontend no longer sends item-level
+  pass/fail status. `OfficerInspectionItem.result` is now nullable for backward
+  compatibility, create/detail/export/admin log responses no longer expose the
+  item result, and frontend handoff docs remove `result` from request/response
+  examples and admin log filters.
+- **2026-07-01 (zone removal / agency-only officer scope)** — Removed the zone
+  feature from the active backend contract. Prisma schema drops `Zone`,
+  `UserZone`, `Business.zoneId`, and `InspectionTask.zoneId`; officer scope is
+  now agency-only (`RequestScope = { agencyId }`). Removed the `ZoneModule` and
+  user zone assignment endpoint, updated inspection/audit/dashboard/export/cron
+  logic to use agency scope, and rebuilt seed data without zones. Business
+  location now uses `address`, `province`, `latitude`, and `longitude`; e-map
+  implementation remains deferred.
+- **2026-07-01 (officer reporting + QR implementation)** — Implemented the
+  approved officer field-report workflow as a separate module from legacy
+  task-based inspections. Added Prisma models/migration for
+  `OfficerInspection`, `OfficerInspectionItem`, `OfficerInspectionEvidence`,
+  and `OfficerPublicProfileScanLog`; added `/api/officer/licenses`,
+  `/api/officer/inspections`, item evidence upload, detail/export,
+  `/api/admin/officer-inspection-logs`, `/api/officers/:id/qr-profile`, and
+  `/api/public/officers/verify/:token`. Added frontend handoff doc
+  `docs/FRONTEND_OFFICER_REPORTING_API.md`.
+- **2026-07-01 (officer role hygiene + reporting plan)** — Fixed
+  `ScopeGuard` so public+officer multi-role users receive officer scope instead
+  of being treated as public-only. User-management create/agency mutations
+  now enforce role grant/manage caps through the shared role helpers. Updated
+  officer role wording in Swagger/auth/user docs. Added
+  `docs/PLAN_OFFICER_REPORTING_AND_QR_PROFILE.md` for the proposed field report,
+  export, admin log, and public officer QR verification feature.
+- **2026-07-01 (juristic business detail API)** — Added
+  `GET /api/my/juristic-businesses/:id` for full business/branch/factory detail
+  under a juristic person. The endpoint derives juristic ownership from the
+  business, verifies active membership, and returns address, juristic owner, license
+  summary, and all licenses for that business. Updated frontend handoff docs.
+- **2026-07-01 (juristic hierarchy response)** — Changed
+  `GET /api/my/juristic-license-groups` from a flattened company-level license
+  list to the Thai business hierarchy: juristic person → businesses/branches →
+  licenses. Updated frontend handoff examples accordingly.
+- **2026-07-01 (prototype juristic demo seed)** — Added
+  `POST /api/my/dev/seed-juristic-license-demo`, an idempotent dev-only helper
+  that creates a demo juristic person, makes the current user OWNER, creates
+  demo businesses, and attaches RNG4/HAZMAT/ACFS mock licenses for frontend
+  juristic accordion testing. Updated frontend handoff instructions.
+- **2026-07-01 (juristic grouped license API)** — Added
+  `GET /api/my/juristic-license-groups`, a read-only endpoint for frontend
+  collapse UI that returns every active juristic membership with nested licenses
+  grouped by company. This avoids token/context switching for display-only
+  juristic license browsing. Updated `docs/FRONTEND_LICENSE_OWNERSHIP_API.md`.
+- **2026-07-01 (license ownership contract)** — Clarified personal vs juristic
+  license ownership without schema changes. Added shared ownership metadata for
+  `GET /api/my/licenses`, public license detail, and public business responses;
+  personal public responses do not expose citizen identity or owner user IDs.
+  Added frontend handoff doc `docs/FRONTEND_LICENSE_OWNERSHIP_API.md` covering
+  context switching, endpoint request/response examples, and cache keys.
+- **2026-06-29 (README updates)** — Rewrote and updated `README.md` to include comprehensive Thai-based developer instructions, detailing project folder structures, environment variables (.env, .env.local, .env.deploy), and local/docker/production commands.
 - **2026-06-16 (Startup URL logging)** — Added built-in NestJS `Logger` in
   `src/main.ts` to log the application API base URL and Swagger UI URL on startup.
   Verified with `npm run lint` and `npm run build`.

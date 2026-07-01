@@ -2,6 +2,27 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { LicenseStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessQueryDto, MapQueryDto } from './business.dto';
+import { buildLicenseOwnership } from '../license/license-ownership';
+
+const BUSINESS_LIST_INCLUDE = {
+  juristicPerson: { select: { nameTh: true, registrationId: true } },
+  licenses: {
+    where: { deletedAt: null },
+    include: { licenseType: true },
+  },
+} as const;
+
+const BUSINESS_DETAIL_INCLUDE = {
+  juristicPerson: { select: { nameTh: true, registrationId: true } },
+  licenses: {
+    where: { deletedAt: null, status: LicenseStatus.ACTIVE },
+    include: { licenseType: true },
+  },
+} as const;
+
+type PublicBusinessRow =
+  | Prisma.BusinessGetPayload<{ include: typeof BUSINESS_LIST_INCLUDE }>
+  | Prisma.BusinessGetPayload<{ include: typeof BUSINESS_DETAIL_INCLUDE }>;
 
 @Injectable()
 export class BusinessService {
@@ -16,12 +37,7 @@ export class BusinessService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.business.findMany({
         where,
-        include: {
-          licenses: {
-            where: { deletedAt: null },
-            include: { licenseType: true },
-          },
-        },
+        include: BUSINESS_LIST_INCLUDE,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
         orderBy: { nameTh: 'asc' },
@@ -29,7 +45,7 @@ export class BusinessService {
       this.prisma.business.count({ where }),
     ]);
     return {
-      data,
+      data: data.map((business) => this.toPublicBusinessDto(business)),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
@@ -37,16 +53,10 @@ export class BusinessService {
   async findOne(id: string) {
     const business = await this.prisma.business.findFirst({
       where: { id, deletedAt: null },
-      include: {
-        zone: true,
-        licenses: {
-          where: { deletedAt: null, status: LicenseStatus.ACTIVE },
-          include: { licenseType: true },
-        },
-      },
+      include: BUSINESS_DETAIL_INCLUDE,
     });
     if (!business) throw new NotFoundException();
-    return business;
+    return this.toPublicBusinessDto(business);
   }
 
   async map(query: MapQueryDto) {
@@ -101,6 +111,24 @@ export class BusinessService {
           licenseStatus: business.licenses[0]?.status ?? null,
         },
       })),
+    };
+  }
+
+  private toPublicBusinessDto(business: PublicBusinessRow) {
+    return {
+      id: business.id,
+      nameTh: business.nameTh,
+      address: business.address,
+      province: business.province,
+      latitude: business.latitude,
+      longitude: business.longitude,
+      geocodedAt: business.geocodedAt,
+      phone: business.phone,
+      deletedAt: business.deletedAt,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt,
+      licenses: business.licenses,
+      ownership: buildLicenseOwnership(business),
     };
   }
 }

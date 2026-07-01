@@ -20,7 +20,8 @@ export class BusinessController {
     summary: 'Search businesses',
     description:
       'Paginated, case-insensitive search on Thai name with optional province ' +
-      'filter. Returns `{ data, meta }`.',
+      'filter. Returns `{ data, meta }`; each business includes ownership ' +
+      'metadata instead of raw holder foreign keys.',
   })
   @ApiOkResponse({ description: 'Paginated business list.' })
   @Get()
@@ -43,7 +44,8 @@ export class BusinessController {
 
   @ApiOperation({
     summary: 'Get a business by id',
-    description: 'Business detail including its active licenses.',
+    description:
+      'Business detail including active licenses and ownership metadata.',
   })
   @ApiParam({ name: 'id', description: 'Business uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The business with active licenses.' })

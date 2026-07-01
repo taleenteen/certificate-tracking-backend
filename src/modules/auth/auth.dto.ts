@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   Length,
   Matches,
@@ -89,6 +90,51 @@ export class TangRatLoginDto {
   @IsString()
   @IsNotEmpty()
   mToken!: string;
+}
+
+export class DgaOidcAuthorizeDto {
+  /**
+   * Frontend callback URL registered with DGA. Omit to use server config.
+   * @example http://localhost:3000/auth/dga/callback
+   */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  redirectUri?: string;
+
+  /**
+   * OIDC scope. Must be a subset of scopes registered with DGA.
+   * @example openid citizen_id given_name family_name
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  scope?: string;
+}
+
+export class DgaOidcCallbackDto {
+  /**
+   * Authorization Code returned by DGA on the frontend callback URL.
+   * In development mock provider accepts codes like `mock-dga-public-owner`.
+   * @example mock-dga-public-owner
+   */
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  /**
+   * Signed state value returned by `POST /auth/dga/authorize`.
+   */
+  @IsString()
+  @IsNotEmpty()
+  state!: string;
+
+  /**
+   * Same redirect URI used in the authorize step.
+   * @example http://localhost:3000/auth/dga/callback
+   */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  redirectUri?: string;
 }
 
 export class SelfLoginDto {
@@ -191,6 +237,15 @@ export class AuthTokenResponseDto {
   linkSuggestion?: { type: 'email_match'; maskedEmail: string };
 }
 
+export class DgaOidcAuthorizeResponseDto {
+  /** URL that frontend should redirect the user to. */
+  authorizeUrl!: string;
+  /** Signed CSRF state. Store client-side and send back with callback code. */
+  state!: string;
+  /** ISO timestamp when state expires. */
+  expiresAt!: string;
+}
+
 export class PasswordChangeRequiredResponseDto {
   /** Always true — the admin must set a new password before continuing. */
   requiresPasswordChange!: boolean;
@@ -201,6 +256,15 @@ export class PasswordChangeRequiredResponseDto {
 export class MessageResponseDto {
   /** Operation outcome flag. */
   success!: boolean;
+}
+
+export class LogoutResponseDto extends MessageResponseDto {
+  /**
+   * Present only when the current session was created through DGA OIDC and the
+   * backend has a provider `id_token` available. Frontend should redirect the
+   * browser to this URL after local cookies/state are cleared.
+   */
+  endSessionUrl?: string;
 }
 
 export class SwitchContextDto {

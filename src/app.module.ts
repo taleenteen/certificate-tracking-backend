@@ -23,10 +23,10 @@ import { LicenseModule } from './modules/license/license.module';
 import { JuristicModule } from './modules/juristic/juristic.module';
 import { MyModule } from './modules/my/my.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { OfficerModule } from './modules/officer/officer.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { UserModule } from './modules/user/user.module';
-import { ZoneModule } from './modules/zone/zone.module';
 
 @Module({
   imports: [
@@ -41,11 +41,11 @@ import { ZoneModule } from './modules/zone/zone.module';
     BusinessModule,
     JuristicModule,
     MyModule,
+    OfficerModule,
     NotificationModule,
     InspectionModule,
     DashboardModule,
     UserModule,
-    ZoneModule,
     SyncModule,
     AuditModule,
     ExportModule,

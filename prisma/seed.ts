@@ -31,6 +31,10 @@ const addDays = (days: number) => {
 async function resetDatabase() {
   await prisma.$transaction([
     prisma.licenseDocument.deleteMany(),
+    prisma.officerInspectionEvidence.deleteMany(),
+    prisma.officerInspectionItem.deleteMany(),
+    prisma.officerPublicProfileScanLog.deleteMany(),
+    prisma.officerInspection.deleteMany(),
     prisma.notification.deleteMany(),
     prisma.auditLog.deleteMany(),
     prisma.inspectionReport.deleteMany(),
@@ -41,7 +45,6 @@ async function resetDatabase() {
     prisma.passwordResetToken.deleteMany(),
     prisma.userSession.deleteMany(),
     prisma.authProviderLink.deleteMany(),
-    prisma.userZone.deleteMany(),
     prisma.syncLog.deleteMany(),
     prisma.accountLinkChallenge.deleteMany(),
     prisma.juristicJoinRequest.deleteMany(),
@@ -49,7 +52,6 @@ async function resetDatabase() {
     prisma.juristicMember.deleteMany(),
     prisma.systemUser.deleteMany(),
     prisma.juristicPerson.deleteMany(),
-    prisma.zone.deleteMany(),
     prisma.licenseType.deleteMany(),
     prisma.agency.deleteMany(),
   ]);
@@ -194,38 +196,14 @@ async function main() {
     }),
   ]);
 
-  const zoneSpecs = [
-    ['Z-BKK', 'เขตกรุงเทพมหานคร', 'กรุงเทพมหานคร', 13.7563, 100.5018],
-    ['Z-CMI', 'เขตเชียงใหม่', 'เชียงใหม่', 18.7883, 98.9853],
-    ['Z-CBI', 'เขตชลบุรี', 'ชลบุรี', 13.3611, 100.9847],
-    ['Z-KKN', 'เขตขอนแก่น', 'ขอนแก่น', 16.4419, 102.8359],
-    ['Z-SKA', 'เขตสงขลา', 'สงขลา', 7.1898, 100.5954],
-    ['Z-NMA', 'เขตนครราชสีมา', 'นครราชสีมา', 14.9799, 102.0978],
+  const locationSpecs = [
+    ['กรุงเทพมหานคร', 13.7563, 100.5018],
+    ['เชียงใหม่', 18.7883, 98.9853],
+    ['ชลบุรี', 13.3611, 100.9847],
+    ['ขอนแก่น', 16.4419, 102.8359],
+    ['สงขลา', 7.1898, 100.5954],
+    ['นครราชสีมา', 14.9799, 102.0978],
   ] as const;
-  const zones = await Promise.all(
-    zoneSpecs.map(([code, nameTh, province, lat, lng]) =>
-      prisma.zone.create({
-        data: {
-          code,
-          nameTh,
-          province,
-          // MOCK: replace in UAT with authoritative GeoJSON boundaries.
-          boundary: {
-            type: 'Polygon',
-            coordinates: [
-              [
-                [lng - 0.1, lat - 0.1],
-                [lng + 0.1, lat - 0.1],
-                [lng + 0.1, lat + 0.1],
-                [lng - 0.1, lat + 0.1],
-                [lng - 0.1, lat - 0.1],
-              ],
-            ],
-          },
-        },
-      }),
-    ),
-  );
 
   const users = await Promise.all([
     prisma.systemUser.create({
@@ -383,24 +361,6 @@ async function main() {
     }
   }
 
-  await prisma.userZone.createMany({
-    data: [
-      [diwOfficerSr.id, zones[0].id],
-      [diwOfficerSr.id, zones[2].id],
-      [acfsOfficerSr.id, zones[1].id],
-      [acfsOfficerSr.id, zones[3].id],
-      [diwOfficer1.id, zones[0].id],
-      [diwOfficer1.id, zones[2].id],
-      [diwOfficer2.id, zones[2].id],
-      [diwOfficer2.id, zones[5].id],
-      [acfsOfficer1.id, zones[1].id],
-      [acfsOfficer1.id, zones[3].id],
-      [acfsOfficer2.id, zones[3].id],
-      [acfsOfficer2.id, zones[4].id],
-      [officerLogin.id, zones[0].id],
-    ].map(([userId, zoneId]) => ({ userId, zoneId })),
-  });
-
   const juristicPersons = await Promise.all(
     Array.from({ length: 8 }, (_, index) =>
       prisma.juristicPerson.create({
@@ -438,15 +398,14 @@ async function main() {
 
   const businesses: Business[] = [];
   for (let index = 0; index < 20; index += 1) {
-    const zoneIndex = index % zones.length;
-    const [, , province, lat, lng] = zoneSpecs[zoneIndex];
+    const locationIndex = index % locationSpecs.length;
+    const [province, lat, lng] = locationSpecs[locationIndex];
     businesses.push(
       await prisma.business.create({
         data: {
           nameTh: `สถานประกอบการตัวอย่าง ${index + 1}`,
           juristicPersonId: juristicPersons[index % juristicPersons.length].id,
           ownerUserId: index === 0 ? publicOwner.id : null,
-          zoneId: zones[zoneIndex].id,
           address: `${100 + index} ถนนอุตสาหกรรม จังหวัด${province}`,
           province,
           latitude: lat + index * 0.001,
@@ -463,7 +422,6 @@ async function main() {
       nameTh: 'สถานประกอบการเจ้าหน้าที่ (DIW)',
       juristicPersonId: juristicPersons[0].id,
       ownerUserId: officerLogin.id,
-      zoneId: zones[0].id,
       address: '999 ถนนอุตสาหกรรม จังหวัดกรุงเทพมหานคร',
       province: 'กรุงเทพมหานคร',
       latitude: 13.7563,
@@ -607,7 +565,6 @@ async function main() {
           licenseId: licenses.find(
             (license) => license.businessId === business.id,
           )?.id,
-          zoneId: business.zoneId,
           assignedTo: assignee.id,
           createdBy: creator.id,
           status: taskStatuses[index],
@@ -637,7 +594,6 @@ async function main() {
           taskNo: `T-${new Date().getFullYear()}-${String(taskStatuses.length + i + 1).padStart(4, '0')}`,
           businessId: officerBusiness.id,
           licenseId: officerLicenses[licenseIdx]?.id,
-          zoneId: officerBusiness.zoneId,
           assignedTo: officerLogin.id,
           createdBy: diwOfficerSr.id,
           status,

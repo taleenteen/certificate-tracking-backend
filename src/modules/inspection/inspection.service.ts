@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -39,9 +38,8 @@ export class InspectionService {
         ],
       } satisfies Prisma.InspectionTaskWhereInput;
     }
-    // Officers see tasks in their assigned zones + agency.
+    // Officers see tasks for their agency. Zone assignment was removed from the app workflow.
     return {
-      zoneId: { in: scope!.zoneIds },
       OR: [
         { license: { licenseType: { agencyId: scope!.agencyId } } },
         { licenseId: null },
@@ -54,7 +52,6 @@ export class InspectionService {
       where: { ...this.scopedWhere(user, scope), status },
       include: {
         business: true,
-        zone: true,
         license: { include: { licenseType: true } },
         assignee: {
           select: { id: true, fullName: true, agencyId: true, roles: true },
@@ -65,24 +62,23 @@ export class InspectionService {
     });
   }
 
-  async findTaskByLicense(licenseId: string, user: JwtClaims, scope: RequestScope | null) {
+  async findTaskByLicense(
+    licenseId: string,
+    user: JwtClaims,
+    scope: RequestScope | null,
+  ) {
     const scopeFilter = this.scopedWhere(user, scope);
-    // Officers can always see tasks assigned directly to them, regardless of
-    // zone/agency scope (admin may cross-assign any license to any officer).
+    // Officers can always see tasks assigned directly to them; otherwise agency scope applies.
     const where: Prisma.InspectionTaskWhereInput = isAdminTier(user.roles)
       ? { licenseId }
       : {
           licenseId,
-          OR: [
-            { assignedTo: user.sub },
-            scopeFilter as Prisma.InspectionTaskWhereInput,
-          ],
+          OR: [{ assignedTo: user.sub }, scopeFilter],
         };
     const task = await this.prisma.inspectionTask.findFirst({
       where,
       include: {
         business: true,
-        zone: true,
         license: { include: { licenseType: true } },
         assignee: {
           select: { id: true, fullName: true, agencyId: true, roles: true },
@@ -104,7 +100,6 @@ export class InspectionService {
       where: { id, ...this.scopedWhere(user, scope) },
       include: {
         business: true,
-        zone: true,
         license: { include: { licenseType: true } },
         assignee: {
           select: { id: true, fullName: true, agencyId: true, roles: true },
@@ -120,23 +115,17 @@ export class InspectionService {
     return task;
   }
 
-  async createTask(
-    dto: CreateTaskDto,
-    creator: JwtClaims,
-    scope: RequestScope | null,
-  ) {
+  async createTask(dto: CreateTaskDto, creator: JwtClaims) {
     const isSuperAdmin = creator.roles.includes('super_admin');
-    const isAdminOrAbove = isAdminTier(creator.roles);
     const business = await this.prisma.business.findFirst({
       where: {
         id: dto.businessId,
         deletedAt: null,
-        zoneId: isAdminOrAbove ? undefined : { in: scope!.zoneIds },
       },
     });
     if (!business) throw new NotFoundException();
 
-    let assignee: { id: string; userZones: { zoneId: string }[] } | null = null;
+    let assignee: { id: string } | null = null;
     if (dto.assignedTo) {
       assignee = await this.prisma.systemUser.findFirst({
         where: {
@@ -147,16 +136,12 @@ export class InspectionService {
           // super_admin can cross-assign; admin and officer restricted to their agency
           agencyId: isSuperAdmin ? undefined : creator.agencyId!,
         },
-        include: { userZones: true },
       });
       if (!assignee) throw new NotFoundException();
       if (business.ownerUserId === assignee.id) {
         throw new ConflictException(
           'Assignee has a conflict of interest with this business',
         );
-      }
-      if (!assignee.userZones.some(({ zoneId }) => zoneId === business.zoneId)) {
-        throw new ForbiddenException('Assignee does not cover business zone');
       }
     }
 
@@ -165,7 +150,9 @@ export class InspectionService {
         where: {
           id: dto.licenseId,
           businessId: business.id,
-          licenseType: isSuperAdmin ? undefined : { agencyId: creator.agencyId! },
+          licenseType: isSuperAdmin
+            ? undefined
+            : { agencyId: creator.agencyId! },
           deletedAt: null,
         },
       });
@@ -187,10 +174,11 @@ export class InspectionService {
               taskNo: `${prefix}${String(sequence).padStart(4, '0')}`,
               businessId: business.id,
               licenseId: dto.licenseId,
-              zoneId: business.zoneId,
               assignedTo: assignee?.id ?? null,
               createdBy: creator.sub,
-              status: assignee ? TaskStatus.ASSIGNED : TaskStatus.WAITING_ASSIGNMENT,
+              status: assignee
+                ? TaskStatus.ASSIGNED
+                : TaskStatus.WAITING_ASSIGNMENT,
               dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
             },
           });
@@ -230,7 +218,11 @@ export class InspectionService {
   ) {
     const isSuperAdmin = actor.roles.includes('super_admin');
     const task = await this.prisma.inspectionTask.findFirst({
-      where: { id, status: TaskStatus.WAITING_ASSIGNMENT, ...this.scopedWhere(actor, scope) },
+      where: {
+        id,
+        status: TaskStatus.WAITING_ASSIGNMENT,
+        ...this.scopedWhere(actor, scope),
+      },
       include: { business: true },
     });
     if (!task) throw new NotFoundException();
@@ -243,14 +235,12 @@ export class InspectionService {
         roles: { has: 'officer' },
         agencyId: isSuperAdmin ? undefined : actor.agencyId!,
       },
-      include: { userZones: true },
     });
     if (!assignee) throw new NotFoundException();
     if (task.business.ownerUserId === assignee.id) {
-      throw new ConflictException('Assignee has a conflict of interest with this business');
-    }
-    if (!assignee.userZones.some(({ zoneId }) => zoneId === task.business.zoneId)) {
-      throw new ForbiddenException('Assignee does not cover business zone');
+      throw new ConflictException(
+        'Assignee has a conflict of interest with this business',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -354,7 +344,10 @@ export class InspectionService {
       data: {
         result: dto.result,
         score: dto.score,
-        findings: dto.findings !== undefined ? (dto.findings as Prisma.InputJsonValue) : undefined,
+        findings:
+          dto.findings !== undefined
+            ? (dto.findings as Prisma.InputJsonValue)
+            : undefined,
         summaryNote: dto.summaryNote,
         checklistTemplateId: dto.checklistTemplateId,
         isDraft: true,
@@ -431,7 +424,6 @@ export class InspectionService {
           where: {
             roles: { has: 'officer' },
             agencyId: task.license?.licenseType.agencyId,
-            userZones: { some: { zoneId: task.zoneId } },
             isActive: true,
           },
         });
@@ -462,7 +454,6 @@ export class InspectionService {
         task: admin
           ? undefined
           : {
-              zoneId: { in: scope!.zoneIds },
               OR: [
                 { license: { licenseType: { agencyId: scope!.agencyId } } },
                 { licenseId: null },

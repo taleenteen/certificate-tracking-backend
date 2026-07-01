@@ -51,8 +51,7 @@ export class InspectionController {
   @ApiOperation({
     summary: 'List inspection tasks (scoped)',
     description:
-      'Officer sees all tasks in their zones + agency (full scope) ' +
-      'zones + agency. Optional `status` filter.',
+      'Officer sees tasks scoped to their agency. Optional `status` filter.',
   })
   @ApiOkResponse({
     description: 'Array of tasks with business/license/report.',
@@ -87,7 +86,7 @@ export class InspectionController {
   @ApiOperation({
     summary: 'Get an inspection task (scoped)',
     description:
-      'Includes business, zone, license, assignee, and the latest report. ' +
+      'Includes business, license, assignee, and the latest report. ' +
       "Returns 404 if outside the caller's scope.",
   })
   @ApiParam({ name: 'id', description: 'Task uuid', format: 'uuid' })
@@ -106,24 +105,19 @@ export class InspectionController {
   @ApiOperation({
     summary: 'Create an inspection task (officer/admin)',
     description:
-      'Assignee must be an officer, share a zone with the business, ' +
-      'and match the agency. Rejected (409) if the assignee owns the business ' +
+      'Assignee must be an officer in the same agency. Rejected (409) if the assignee owns the business ' +
       '(conflict of interest). Generates a sequential `T-YYYY-NNNN` number and ' +
       'notifies the assignee.',
   })
   @ApiCreatedResponse({ description: 'The created task.' })
   @ApiNotFoundResponse({ description: 'Business or assignee not in scope.' })
-  @ApiForbiddenResponse({ description: 'Assignee does not cover the zone.' })
+  @ApiForbiddenResponse({ description: 'Assignee is not allowed.' })
   @ApiConflictResponse({
     description: 'Assignee owns the business (conflict of interest).',
   })
   @Post('inspection-tasks')
-  createTask(
-    @Body() dto: CreateTaskDto,
-    @CurrentUser() user: JwtClaims,
-    @Req() request: Request,
-  ) {
-    return this.inspections.createTask(dto, user, request.scope!);
+  createTask(@Body() dto: CreateTaskDto, @CurrentUser() user: JwtClaims) {
+    return this.inspections.createTask(dto, user);
   }
 
   @Roles('officer', 'admin')
@@ -135,7 +129,7 @@ export class InspectionController {
   @ApiParam({ name: 'id', description: 'Task uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The updated task.' })
   @ApiNotFoundResponse({ description: 'Task not found or out of scope.' })
-  @ApiForbiddenResponse({ description: 'Inspector does not cover the zone.' })
+  @ApiForbiddenResponse({ description: 'Inspector is not allowed.' })
   @Patch('inspection-tasks/:id/assign')
   assignTask(
     @Param('id') id: string,
@@ -143,7 +137,12 @@ export class InspectionController {
     @CurrentUser() user: JwtClaims,
     @Req() request: Request,
   ) {
-    return this.inspections.assignTask(id, dto.assignedTo, user, request.scope!);
+    return this.inspections.assignTask(
+      id,
+      dto.assignedTo,
+      user,
+      request.scope!,
+    );
   }
 
   @Roles('officer')
@@ -254,7 +253,7 @@ export class InspectionController {
     summary: 'Submit a report (owner)',
     description:
       'Requires a non-null result. Sets the report non-draft, transitions the ' +
-      'task to PENDING_REVIEW, and notifies officers in the zone + agency.',
+      'task to PENDING_REVIEW, and notifies officers in the agency.',
   })
   @ApiParam({ name: 'id', description: 'Report uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The submitted report.' })

@@ -45,7 +45,7 @@ export class CreateTaskDto {
 }
 
 export class AssignTaskDto {
-  /** Inspector to assign (uuid). Must share a zone + agency, and not own the business. */
+  /** Inspector to assign (uuid). Must share agency, and not own the business. */
   @IsUUID()
   assignedTo!: string;
 }

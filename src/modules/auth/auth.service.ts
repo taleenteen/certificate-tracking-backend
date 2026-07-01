@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  BadRequestException,
   HttpException,
   HttpStatus,
   Inject,
@@ -17,12 +18,24 @@ import {
   SystemUser,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'crypto';
 import { authenticator } from 'otplib';
 import { JwtClaims } from '../../common/auth.types';
 import { isAdminTier, maxRank } from '../../common/auth.roles'; // for D5 cross-tier guard in merges (Tang Rat primary)
 import { PrismaService } from '../../prisma/prisma.service';
-import { TANG_RAT_PROVIDER } from '../external/external.module';
+import {
+  DGA_OIDC_PROVIDER,
+  TANG_RAT_PROVIDER,
+} from '../external/external.module';
+import type { DgaOidcProvider } from '../external/dga-oidc.provider';
 import type { TangRatProvider } from '../external/tangrat.provider';
 import {
   storeCitizenId,
@@ -30,10 +43,18 @@ import {
   last4,
 } from '../../common/crypto/citizen-id';
 import { ProfileChannel } from '@prisma/client';
+import { jwtKeys } from './auth.keys';
 
 interface RequestMetadata {
   ipAddress?: string;
   userAgent?: string;
+}
+
+interface DgaOidcStatePayload {
+  nonce?: string;
+  exp?: number;
+  redirectUri?: string;
+  scope?: string;
 }
 
 @Injectable()
@@ -43,10 +64,57 @@ export class AuthService {
     private readonly jwt: JwtService,
     @Inject(TANG_RAT_PROVIDER)
     private readonly tangRat: TangRatProvider,
+    @Inject(DGA_OIDC_PROVIDER)
+    private readonly dgaOidc: DgaOidcProvider,
   ) {}
 
   private hash(value: string) {
     return createHash('sha256').update(value).digest('hex');
+  }
+
+  private providerTokenKey() {
+    const secret =
+      process.env.DGA_OIDC_ID_TOKEN_ENCRYPTION_KEY ??
+      process.env.DGA_OIDC_STATE_SECRET ??
+      jwtKeys().privateKey;
+    return createHash('sha256').update(secret).digest();
+  }
+
+  private encryptProviderToken(token: string) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.providerTokenKey(), iv);
+    const encrypted = Buffer.concat([
+      cipher.update(token, 'utf8'),
+      cipher.final(),
+    ]);
+    const tag = cipher.getAuthTag();
+    return [
+      'v1',
+      iv.toString('base64url'),
+      tag.toString('base64url'),
+      encrypted.toString('base64url'),
+    ].join(':');
+  }
+
+  private decryptProviderToken(value: string | null | undefined) {
+    if (!value) return undefined;
+    if (!value.startsWith('v1:')) return value;
+    const [, iv, tag, encrypted] = value.split(':');
+    if (!iv || !tag || !encrypted) throw new UnauthorizedException();
+    try {
+      const decipher = createDecipheriv(
+        'aes-256-gcm',
+        this.providerTokenKey(),
+        Buffer.from(iv, 'base64url'),
+      );
+      decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+      return Buffer.concat([
+        decipher.update(Buffer.from(encrypted, 'base64url')),
+        decipher.final(),
+      ]).toString('utf8');
+    } catch {
+      throw new UnauthorizedException();
+    }
   }
 
   // D5 helpers (Tang Rat primary).
@@ -63,24 +131,96 @@ export class AuthService {
     return e.replace(/^(.).+(@.+)$/, '$1***$2');
   }
 
-  private async claimsFor(
+  private oidcStateSecret() {
+    return process.env.DGA_OIDC_STATE_SECRET ?? jwtKeys().privateKey;
+  }
+
+  private dgaRedirectUris() {
+    const configured = process.env.DGA_OIDC_ALLOWED_REDIRECT_URIS
+      ? process.env.DGA_OIDC_ALLOWED_REDIRECT_URIS.split(',')
+      : [process.env.DGA_OIDC_REDIRECT_URI].filter(Boolean);
+    return configured
+      .filter((uri): uri is string => typeof uri === 'string')
+      .map((uri) => uri.trim())
+      .filter(Boolean);
+  }
+
+  private resolveDgaRedirectUri(redirectUri?: string) {
+    const allowed = this.dgaRedirectUris();
+    const selected = redirectUri ?? allowed[0];
+    if (!selected || !allowed.includes(selected)) {
+      throw new BadRequestException('Invalid redirect URI');
+    }
+    return selected;
+  }
+
+  private resolveDgaScope(scope?: string) {
+    const selected = scope ?? process.env.DGA_OIDC_SCOPE ?? 'openid';
+    const allowed = new Set([
+      'openid',
+      'citizen_id',
+      'given_name',
+      'family_name',
+    ]);
+    const values = selected.split(/\s+/).filter(Boolean);
+    if (
+      !values.includes('openid') ||
+      values.some((value) => !allowed.has(value))
+    ) {
+      throw new BadRequestException('Invalid scope');
+    }
+    return values.join(' ');
+  }
+
+  private signOidcState(payload: Record<string, unknown>) {
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signature = createHmac('sha256', this.oidcStateSecret())
+      .update(body)
+      .digest('base64url');
+    return `${body}.${signature}`;
+  }
+
+  private verifyOidcState(state: string) {
+    const [body, signature] = state.split('.');
+    if (!body || !signature) throw new BadRequestException('Invalid state');
+    const expected = createHmac('sha256', this.oidcStateSecret())
+      .update(body)
+      .digest('base64url');
+    const actualBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (
+      actualBuffer.length !== expectedBuffer.length ||
+      !timingSafeEqual(actualBuffer, expectedBuffer)
+    ) {
+      throw new BadRequestException('Invalid state');
+    }
+    let payload: DgaOidcStatePayload;
+    try {
+      payload = JSON.parse(
+        Buffer.from(body, 'base64url').toString('utf8'),
+      ) as DgaOidcStatePayload;
+    } catch {
+      throw new BadRequestException('Invalid state');
+    }
+    if (!payload.nonce || !payload.exp || payload.exp < Date.now()) {
+      throw new BadRequestException('Expired state');
+    }
+    return payload;
+  }
+
+  private claimsFor(
     user: SystemUser,
     jti: string,
     authProvider: AuthProvider,
     clientType: ClientType,
     citizenSub?: string,
     juristicCtx?: { juristicId: string; role: JuristicRole },
-  ): Promise<JwtClaims> {
-    const zones = await this.prisma.userZone.findMany({
-      where: { userId: user.id },
-      select: { zoneId: true },
-    });
+  ): JwtClaims {
     return {
       sub: user.id,
       jti,
       roles: user.roles,
       agencyId: user.agencyId,
-      zoneIds: zones.map(({ zoneId }) => zoneId),
       authProvider,
       clientType,
       citizenSub,
@@ -108,7 +248,7 @@ export class AuthService {
     juristicCtx?: { juristicId: string; role: JuristicRole } | null,
   ): Promise<string> {
     const newJti = randomUUID();
-    const claims = await this.claimsFor(
+    const claims = this.claimsFor(
       user,
       newJti,
       session.authProvider,
@@ -138,6 +278,7 @@ export class AuthService {
     metadata: RequestMetadata,
     tangRatSub?: string,
     juristicCtx?: { juristicId: string; role: JuristicRole },
+    providerIdToken?: string,
   ) {
     const refreshToken = randomBytes(64).toString('hex');
     const jti = randomUUID();
@@ -153,13 +294,16 @@ export class AuthService {
         authProvider,
         clientType,
         tangRatSub,
+        providerIdToken: providerIdToken
+          ? this.encryptProviderToken(providerIdToken)
+          : undefined,
         activeJuristicId: juristicCtx?.juristicId ?? null,
         ipAddress: metadata.ipAddress,
         userAgent: metadata.userAgent,
         expiresAt,
       },
     });
-    const claims = await this.claimsFor(
+    const claims = this.claimsFor(
       user,
       jti,
       authProvider,
@@ -343,7 +487,6 @@ export class AuthService {
             jti: randomUUID(),
             roles: user.roles,
             agencyId: null,
-            zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.app,
             pwc: true,
@@ -362,8 +505,85 @@ export class AuthService {
     return result;
   }
 
+  async createDgaOidcAuthorizeUrl(dto: {
+    redirectUri?: string;
+    scope?: string;
+  }) {
+    const issuedAt = Date.now();
+    const expiresAt = new Date(issuedAt + 10 * 60 * 1000);
+    const redirectUri = this.resolveDgaRedirectUri(dto.redirectUri);
+    const scope = this.resolveDgaScope(dto.scope);
+    const nonce = randomUUID();
+    const state = this.signOidcState({
+      nonce,
+      iat: issuedAt,
+      exp: expiresAt.getTime(),
+      redirectUri,
+      scope,
+    });
+    await this.prisma.dgaOidcState.create({
+      data: {
+        nonce,
+        stateHash: this.hash(state),
+        redirectUri,
+        scope,
+        expiresAt,
+      },
+    });
+    return {
+      authorizeUrl: this.dgaOidc.authorizeUrl({
+        state,
+        redirectUri,
+        scope,
+      }),
+      state,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  async dgaOidcCallback(
+    dto: { code: string; state: string; redirectUri?: string },
+    metadata: RequestMetadata,
+  ) {
+    const statePayload = this.verifyOidcState(dto.state);
+    const redirectUri = this.resolveDgaRedirectUri(dto.redirectUri);
+    if (statePayload.redirectUri !== redirectUri) {
+      throw new BadRequestException('Invalid state');
+    }
+    const consumed = await this.prisma.dgaOidcState.updateMany({
+      where: {
+        nonce: statePayload.nonce!,
+        stateHash: this.hash(dto.state),
+        redirectUri,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { consumedAt: new Date() },
+    });
+    if (consumed.count !== 1) {
+      throw new BadRequestException('Invalid state');
+    }
+    const token = await this.dgaOidc.exchangeCode(dto.code, redirectUri);
+    const identity = await this.dgaOidc.userInfo(token.accessToken);
+    return this.loginTangRatIdentity(identity, metadata, token.idToken);
+  }
+
   async tangRatLogin(mToken: string, metadata: RequestMetadata) {
     const identity = await this.tangRat.verify(mToken);
+    return this.loginTangRatIdentity(identity, metadata);
+  }
+
+  private async loginTangRatIdentity(
+    identity: {
+      sub: string;
+      fullName: string;
+      email?: string;
+      phone?: string;
+      citizenId?: string;
+    },
+    metadata: RequestMetadata,
+    providerIdToken?: string,
+  ) {
     // MOCK: replace in UAT. citizenId (if present) is Tang Rat-verified (primary per D5).
     const link = await this.prisma.authProviderLink.findUnique({
       where: {
@@ -408,6 +628,8 @@ export class AuthService {
         ClientType.app,
         metadata,
         identity.sub,
+        undefined,
+        providerIdToken,
       );
       await this.audit(link.user.id, 'LOGIN', metadata);
       return result;
@@ -444,6 +666,8 @@ export class AuthService {
             ClientType.app,
             metadata,
             identity.sub,
+            undefined,
+            providerIdToken,
           );
           await this.audit(owner.id, 'LOGIN', metadata);
           return result;
@@ -502,6 +726,8 @@ export class AuthService {
       ClientType.app,
       metadata,
       identity.sub,
+      undefined,
+      providerIdToken,
     );
     await this.audit(user.id, 'LOGIN', metadata);
     // Attach suggestion if present (back-compat: callers that only expect tokens still work; dto extended in phase).
@@ -537,7 +763,8 @@ export class AuthService {
     // Lets `000000` pass so the demo doesn't require an authenticator app.
     // TODO: remove TOTP_BYPASS before any real production use.
     const totpValid =
-      ((process.env.NODE_ENV === 'development' || process.env.TOTP_BYPASS === 'true') &&
+      ((process.env.NODE_ENV === 'development' ||
+        process.env.TOTP_BYPASS === 'true') &&
         totpCode === '000000') ||
       (!!user.totpSecret && authenticator.check(totpCode, user.totpSecret));
     if (!passwordValid || !totpValid) {
@@ -569,7 +796,6 @@ export class AuthService {
             jti: randomUUID(),
             roles: user.roles,
             agencyId: null,
-            zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.web_admin,
             pwc: true,
@@ -644,10 +870,18 @@ export class AuthService {
       metadata,
       session.tangRatSub ?? undefined,
       juristicCtx,
+      this.decryptProviderToken(session.providerIdToken),
     );
   }
 
   async logout(user: JwtClaims, metadata: RequestMetadata) {
+    const session = await this.prisma.userSession.findFirst({
+      where: { userId: user.sub, accessTokenJti: user.jti },
+      select: {
+        authProvider: true,
+        providerIdToken: true,
+      },
+    });
     await this.prisma.userSession.updateMany({
       where: { userId: user.sub, accessTokenJti: user.jti },
       data: {
@@ -657,7 +891,14 @@ export class AuthService {
       },
     });
     await this.audit(user.sub, 'LOGOUT', metadata);
-    return { success: true };
+    const endSessionUrl =
+      session?.authProvider === AuthProvider.tang_rat && session.providerIdToken
+        ? this.dgaOidc.endSessionUrl(
+            this.decryptProviderToken(session.providerIdToken)!,
+            process.env.DGA_OIDC_LOGOUT_REDIRECT_URI,
+          )
+        : undefined;
+    return { success: true, endSessionUrl };
   }
 
   async changePassword(user: JwtClaims, newPassword: string) {
@@ -1062,19 +1303,6 @@ export class AuthService {
         where: { triggeredBy: absorbedId },
         data: { triggeredBy: canonicalId },
       });
-
-      // UserZone: move + dedupe
-      const zonesToMove = await tx.userZone.findMany({
-        where: { userId: absorbedId },
-      });
-      for (const z of zonesToMove) {
-        await tx.userZone.upsert({
-          where: { userId_zoneId: { userId: canonicalId, zoneId: z.zoneId } },
-          create: { userId: canonicalId, zoneId: z.zoneId },
-          update: {},
-        });
-      }
-      await tx.userZone.deleteMany({ where: { userId: absorbedId } });
 
       // Sessions on absorbed: revoke all
       await tx.userSession.updateMany({

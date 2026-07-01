@@ -35,21 +35,23 @@ itself expires.
 
 ---
 
-## 2. Three ways to log in (and who uses each)
+## 2. Four ways to log in (and who uses each)
 
-This platform serves two very different audiences, so there are three entry
+This platform serves two very different audiences, so there are four entry
 points. **You only ever use one**, depending on who you are.
 
 | Endpoint | Who | What you send | Notes |
 |---|---|---|---|
 | `POST /api/auth/register` | **Public citizens** | username, email, password | Self-signup. Creates a read-only account and logs you in immediately. |
 | `POST /api/auth/login` | **Public citizens** | username, password | For returning citizens who registered above. |
-| `POST /api/auth/tang-rat` | **Field staff** (inspector/supervisor) and citizens coming from the gov app | an `mToken` from the ทางรัฐ (Tang Rat) super app | No password — identity comes from the government app. Account is auto-created on first use. |
+| `POST /api/auth/tang-rat` | **Field staff** (`officer`) and citizens coming from the gov app | an `mToken` from the ทางรัฐ (Tang Rat) super app | No password — identity comes from the government app. Account is auto-created on first use. |
+| `POST /api/auth/dga/authorize` → `POST /api/auth/dga/callback` | **Citizens / officers via DGA Digital ID OIDC** | `code` + signed `state` | OpenID Connect 1.0 flow for ทางรัฐ/DGA. Token and UserInfo exchange are backend-only. |
 | `POST /api/auth/self` | **Admins** (admin/super_admin) | username, password, **TOTP code** | Web portal only. Requires a 6-digit authenticator code (2-factor). |
 
 **The simple rule:**
 - Citizen with a password → **register / login**.
-- Field staff via the gov app → **tang-rat**.
+- Field staff via the gov app → **dga/authorize + dga/callback** for OIDC, or
+  **tang-rat** for the older mock mToken shortcut.
 - Admin in the back office → **self** (with 2FA).
 
 > **Why three?** Citizens want a normal "sign up" experience. Field staff are
@@ -103,6 +105,50 @@ POST /api/auth/login
 Returns the same token shape. Admins are **rejected** here (they must use
 `/auth/self`) — the server replies with a generic `401 Invalid credentials` so
 nobody can tell admin usernames apart from citizen ones.
+
+## 3b. DGA Digital ID / ทางรัฐ OIDC flow
+
+Use this for the real OpenID Connect style integration.
+
+1. Frontend calls:
+   ```http
+   POST /api/auth/dga/authorize
+   { "redirectUri": "http://localhost:3000/auth/dga/callback", "scope": "openid citizen_id given_name family_name" }
+   ```
+2. Backend returns `authorizeUrl`, signed `state`, and `expiresAt`.
+3. Frontend stores `state` plus the exact `redirectUri` in session-scoped
+   storage and redirects the browser to `authorizeUrl`.
+4. DGA redirects back to the frontend callback with `?code=...&state=...`.
+5. Frontend sends both values to:
+   ```http
+   POST /api/auth/dga/callback
+   { "code": "...", "state": "...", "redirectUri": "http://localhost:3000/auth/dga/callback" }
+   ```
+6. Backend validates the signed one-time `state`, verifies the `redirectUri`
+   against `DGA_OIDC_ALLOWED_REDIRECT_URIS`, exchanges `code` for provider tokens, calls
+   UserInfo, then reuses the Tang Rat identity-binding logic to create/find the
+   user and issue this API's `accessToken` + `refreshToken`. The provider
+   `id_token` is AES-GCM encrypted and stored only on the server-side session so
+   logout can call DGA end-session later.
+
+DGA OIDC logout uses the normal `POST /api/auth/logout` endpoint. The backend
+revokes the app session first. If that session has a DGA provider `id_token`, the
+response includes `endSessionUrl` for `/connect/endsession` with
+`id_token_hint` and `post_logout_redirect_url`. Frontend redirects to that URL,
+then DGA redirects back to `/auth/logout-callback`, where the user must login
+again before returning to the app.
+
+Production scale-out note: DGA OIDC state nonces are stored in the database and
+consumed atomically, so authorize/callback pairs may be handled by different API
+instances.
+
+Development mock callback codes:
+
+- `mock-dga-public-owner`
+- `mock-dga-officer-diw`
+- `mock-dga-officer-acfs`
+
+Frontend details live in `docs/FRONTEND_DGA_OIDC_API.md`.
 
 ---
 
@@ -172,22 +218,21 @@ const ok = await bcrypt.compare(attempt, user.passwordHash);
 
 ---
 
-## 6. The five roles (who can do what)
+## 6. The four platform roles (who can do what)
 
 Roles are **hierarchical** — a higher role automatically has every lower
 role's access:
 
 ```
-public  <  inspector  <  supervisor  <  admin  <  super_admin
-  0          1             2             3          4
+public  <  officer  <  admin  <  super_admin
+  0          1          2          3
 ```
 
 | Role | How they log in | What they can do |
 |---|---|---|
 | `public` | register / login / tang-rat | Read-only: view licenses, businesses, own notifications. |
-| `inspector` | tang-rat | Perform field inspections, file reports. |
-| `supervisor` | tang-rat | Assign tasks, approve/return reports, manage own-agency users. |
-| `admin` | self (+TOTP) | All operations, all dashboards, audit; grant roles *below* admin. |
+| `officer` | tang-rat / configured password account | Field staff role. Current prototype capabilities cover inspection/report workflows and agency-scoped operational reads. |
+| `admin` | self (+TOTP) | Admin portal operations; grant roles *below* admin. Some operational reads remain agency-scoped until the admin model is reworked. |
 | `super_admin` | self (+TOTP) | Manage all users; the only role that can grant `admin`/`super_admin`. |
 
 Self-registration always creates a `public` user. Promoting someone to a higher

@@ -28,8 +28,12 @@ import {
   AuthTokenResponseDto,
   ChangePasswordDto,
   ContextSwitchResponseDto,
+  DgaOidcAuthorizeDto,
+  DgaOidcAuthorizeResponseDto,
+  DgaOidcCallbackDto,
   ForgotPasswordDto,
   LoginDto,
+  LogoutResponseDto,
   MessageResponseDto,
   RefreshDto,
   RegisterDto,
@@ -130,7 +134,7 @@ export class AuthController {
   @Public()
   @SkipAudit()
   @ApiOperation({
-    summary: 'Login via ทางรัฐ mToken (PUBLIC / INSPECTOR / SUPERVISOR)',
+    summary: 'Login via ทางรัฐ mToken (PUBLIC / OFFICER)',
     description:
       'Verifies the mToken with the Tang Rat provider, finds or creates the ' +
       'user, and issues access + refresh tokens. Sets the refresh token as an ' +
@@ -147,6 +151,50 @@ export class AuthController {
     return this.setRefreshCookie(
       response,
       await this.auth.tangRatLogin(dto.mToken, this.metadata(request)),
+    );
+  }
+
+  @Public()
+  @SkipAudit()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Create DGA Digital ID OIDC authorize URL',
+    description:
+      'Creates a signed 10-minute OIDC state and returns the DGA authorize URL. ' +
+      'Frontend redirects the user to `authorizeUrl`, stores `state`, then sends ' +
+      '`code` and `state` to `/auth/dga/callback` after DGA redirects back.',
+  })
+  @ApiOkResponse({ type: DgaOidcAuthorizeResponseDto })
+  @Post('dga/authorize')
+  dgaAuthorize(@Body() dto: DgaOidcAuthorizeDto) {
+    return this.auth.createDgaOidcAuthorizeUrl(dto);
+  }
+
+  @Public()
+  @SkipAudit()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login with DGA Digital ID OIDC code',
+    description:
+      'Validates the signed state, exchanges the authorization code for a mock ' +
+      'DGA access token, reads UserInfo, then issues this API access + refresh ' +
+      'tokens. Token and UserInfo exchange are backend-only.',
+  })
+  @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid authorization code or UserInfo token.',
+  })
+  @Post('dga/callback')
+  async dgaCallback(
+    @Body() dto: DgaOidcCallbackDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.setRefreshCookie(
+      response,
+      await this.auth.dgaOidcCallback(dto, this.metadata(request)),
     );
   }
 
@@ -218,9 +266,11 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Logout',
-    description: 'Revokes the current session (refresh token).',
+    description:
+      'Revokes the current session. DGA OIDC sessions also return an ' +
+      '`endSessionUrl` that the frontend should redirect to for Digital ID logout.',
   })
-  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiOkResponse({ type: LogoutResponseDto })
   @Post('logout')
   logout(@CurrentUser() user: JwtClaims, @Req() request: Request) {
     return this.auth.logout(user, this.metadata(request));

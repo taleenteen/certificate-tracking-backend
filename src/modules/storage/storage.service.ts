@@ -28,7 +28,10 @@ export class StorageService implements OnModuleInit {
   // Public endpoint for presigned URL generation. The URL must be reachable from
   // the browser. In production set MINIO_PUBLIC_ENDPOINT=http://<server-ip>:9000.
   private readonly presignClient = new S3Client({
-    endpoint: process.env.MINIO_PUBLIC_ENDPOINT ?? process.env.MINIO_ENDPOINT ?? 'http://localhost:9000',
+    endpoint:
+      process.env.MINIO_PUBLIC_ENDPOINT ??
+      process.env.MINIO_ENDPOINT ??
+      'http://localhost:9000',
     region: this.region,
     forcePathStyle: true,
     credentials: this.s3Creds,

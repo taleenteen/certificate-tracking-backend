@@ -22,7 +22,8 @@ export class AgencyController {
   @Public()
   @ApiOperation({
     summary: 'List all agencies',
-    description: 'Returns all agencies (active and inactive) with derived license type count.',
+    description:
+      'Returns all agencies (active and inactive) with derived license type count.',
   })
   @ApiOkResponse({ description: 'Array of agency records.' })
   @Get()
@@ -44,7 +45,8 @@ export class AgencyController {
   @Roles('admin', 'super_admin')
   @ApiOperation({
     summary: 'Update an agency (admin)',
-    description: 'Updates agency metadata. The code field is immutable and cannot be changed.',
+    description:
+      'Updates agency metadata. The code field is immutable and cannot be changed.',
   })
   @ApiParam({ name: 'id', description: 'Agency UUID', format: 'uuid' })
   @ApiOkResponse({ description: 'The updated agency.' })

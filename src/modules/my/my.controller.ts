@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -34,8 +36,8 @@ import {
 
 class MyLicensesQuery {
   /**
-   * `personal` = licenses of a business the user owns; `juristic` = licenses of
-   * the user's registered juristic person (mock DBD lookup).
+   * Deprecated compatibility switch used only when no active juristic context
+   * exists. Prefer POST /auth/context and then call GET /my/licenses.
    */
   @ApiPropertyOptional({ enum: ['personal', 'juristic'], default: 'personal' })
   @IsIn(['personal', 'juristic'])
@@ -48,7 +50,10 @@ class MyLicensesQuery {
 export class MyController {
   constructor(private readonly myService: MyService) {}
 
-  @ApiOperation({ summary: '[DEV] Create a test license expiring within 30 days for the current user' })
+  @ApiOperation({
+    summary:
+      '[DEV] Create a test license expiring within 30 days for the current user',
+  })
   @ApiOkResponse({ description: 'Newly created dev license.' })
   @Post('dev/seed-license')
   createDevLicense(@CurrentUser() user: JwtClaims) {
@@ -56,12 +61,77 @@ export class MyController {
   }
 
   @ApiOperation({
+    summary:
+      '[DEV] Create juristic company demo data with licenses for current user',
+    description:
+      'Prototype-only helper for empty databases and frontend demos. Creates ' +
+      'or updates one demo juristic person, makes the current user OWNER, and ' +
+      'adds mock businesses/licenses for the juristic license accordion UI. ' +
+      'Idempotent per user; disabled when NODE_ENV=production.',
+  })
+  @ApiOkResponse({
+    description:
+      'Created/updated demo juristic data and returns the grouped license view.',
+  })
+  @ApiForbiddenResponse({ description: 'Disabled in production.' })
+  @Post('dev/seed-juristic-license-demo')
+  createDevJuristicLicenseDemo(@CurrentUser() user: JwtClaims) {
+    return this.myService.createDevJuristicLicenseDemo(user.sub);
+  }
+
+  @ApiOperation({
+    summary: 'My juristic licenses grouped by company',
+    description:
+      'Read-only grouped view for collapse UI. Returns every active juristic ' +
+      'membership for the current user with businesses nested under each ' +
+      'juristic person and licenses nested under each business. ' +
+      'Does not require POST /auth/context and does not change the access token.',
+  })
+  @ApiOkResponse({
+    description:
+      'Array of juristic companies with role, business count, and nested business/license data.',
+  })
+  @Get('juristic-license-groups')
+  juristicLicenseGroups(@CurrentUser() user: JwtClaims) {
+    return this.myService.getJuristicLicenseGroups(user.sub);
+  }
+
+  @ApiOperation({
+    summary: 'Juristic business detail',
+    description:
+      'Full detail for one business/branch under a juristic person. The ' +
+      'backend derives the juristic person from the business and verifies that ' +
+      'the current user is an active member. Returns 404 for not found or not ' +
+      'in scope.',
+  })
+  @ApiOkResponse({
+    description:
+      'Business detail with address, juristic owner, license summary, and licenses.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Business not found, not juristic, or not in user scope.',
+  })
+  @Get('juristic-businesses/:id')
+  juristicBusinessDetail(
+    @CurrentUser() user: JwtClaims,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.myService.getJuristicBusinessDetail(user.sub, id);
+  }
+
+  @ApiOperation({
     summary: 'My licenses',
     description:
-      'Returns the current user’s licenses. In `juristic` mode, a 404 with ' +
-      '`{ found: false }` is returned when no juristic match exists.',
+      'Returns licenses for the current session context. If the access token ' +
+      'has `activeJuristicId`, this returns that juristic person’s licenses. ' +
+      '`mode=personal|juristic` is kept only for legacy clients without active ' +
+      'context; `mode=juristic` uses the mock DBD lookup and returns 404 ' +
+      'with `{ found: false }` when no match exists.',
   })
-  @ApiOkResponse({ description: 'Licenses for the selected mode.' })
+  @ApiOkResponse({
+    description:
+      'Array of licenses with business and ownership metadata for the active context.',
+  })
   @Get('licenses')
   licenses(
     @CurrentUser() user: JwtClaims,

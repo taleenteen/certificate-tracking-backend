@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -13,6 +22,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
   CreateLicenseTypeDto,
+  PublicLicenseSearchDto,
   UpdateLicenseStatusDto,
   UpdateLicenseTypeDto,
 } from './license.dto';
@@ -33,6 +43,38 @@ export class LicenseController {
   @Get('license-types')
   listTypes() {
     return this.licenses.listTypes();
+  }
+
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Public()
+  @ApiOperation({
+    summary: 'Search public licenses by business name',
+    description:
+      'Public license search for citizens. Searches by business name (`q`) ' +
+      'with optional license number filter (`licenseNumber`). No officer ' +
+      'agency scope is applied because license data is public.',
+  })
+  @ApiOkResponse({ description: 'Paginated public license search results.' })
+  @Get('licenses/search')
+  searchPublic(@Query() query: PublicLicenseSearchDto) {
+    return this.licenses.searchPublic(query);
+  }
+
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Public()
+  @ApiOperation({
+    summary: 'Search public licenses grouped by business',
+    description:
+      'Citizen-facing search that returns businesses/establishments first, ' +
+      'with matching licenses nested under each business. Uses `q` for ' +
+      'business name and optional `licenseNumber` for license number.',
+  })
+  @ApiOkResponse({
+    description: 'Paginated businesses with nested matching licenses.',
+  })
+  @Get('licenses/search/grouped-by-business')
+  searchPublicGroupedByBusiness(@Query() query: PublicLicenseSearchDto) {
+    return this.licenses.searchPublicGroupedByBusiness(query);
   }
 
   @Roles('admin', 'super_admin')
@@ -62,7 +104,8 @@ export class LicenseController {
   @Public()
   @ApiOperation({
     summary: 'List license and task statuses (enum reader)',
-    description: 'Returns status codes with Thai display names and workflow metadata.',
+    description:
+      'Returns status codes with Thai display names and workflow metadata.',
   })
   @ApiOkResponse({ description: '{ licenseStatuses, taskStatuses } arrays.' })
   @Get('statuses')
@@ -85,7 +128,8 @@ export class LicenseController {
     summary: 'Get a license by id',
     description:
       'Public license detail including type, business, and documents with ' +
-      'presigned URLs (10-min TTL).',
+      'presigned URLs (10-min TTL). Includes ownership metadata without ' +
+      'exposing personal citizen identity.',
   })
   @ApiParam({ name: 'id', description: 'License uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The license with related data.' })
@@ -100,7 +144,8 @@ export class LicenseController {
   @ApiOperation({
     summary: 'QR verification of a license',
     description:
-      'Minimal license payload for QR scanning. Rate limited to 60/min/IP.',
+      'Minimal license payload for QR scanning, including ownership metadata. ' +
+      'Rate limited to 60/min/IP.',
   })
   @ApiParam({ name: 'id', description: 'License uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'Minimal license verification payload.' })

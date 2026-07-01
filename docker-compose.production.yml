@@ -1,0 +1,210 @@
+# Production all-in-one stack for Ubuntu.
+#
+# Expected repository layout on the server:
+#   ~/Backend/certificate-tracking-backend
+#   ~/Frontend/certificate-tracking
+#
+# Run from this backend directory:
+#   PUBLIC_HOST=e-license.govcenter.co \
+#   POSTGRES_PASSWORD='change-me' \
+#   JWT_PRIVATE_KEY_BASE64='base64-pem' \
+#   JWT_PUBLIC_KEY_BASE64='base64-pem' \
+#   DGA_OIDC_CLIENT_ID='...' \
+#   DGA_OIDC_CLIENT_SECRET='...' \
+#   DGA_OIDC_STATE_SECRET='random-32-byte-secret' \
+#   DGA_OIDC_ID_TOKEN_ENCRYPTION_KEY='random-32-byte-secret' \
+#   MINIO_ROOT_PASSWORD='change-me' \
+#   docker compose -f docker-compose.production.yml up -d --build
+#
+# Notes:
+# - Caddy terminates HTTPS and forwards all browser traffic to the Next.js app.
+# - The browser talks to same-origin `/api/*`; Next.js BFF forwards to `backend`
+#   on the private Docker network.
+# - Backend is not published to the public internet by default.
+# - Seed runs automatically only when `system_users` is empty. Existing data is
+#   never wiped on normal container restarts.
+
+services:
+  reverse-proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_started
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - ${PUBLIC_HOST:?Set PUBLIC_HOST, e.g. e-license.govcenter.co}
+      - --to
+      - frontend:3003
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+  frontend:
+    build:
+      context: ../../Frontend/certificate-tracking
+      dockerfile_inline: |
+        FROM oven/bun:1.1 AS deps
+        WORKDIR /app
+        COPY package.json bun.lock ./
+        RUN bun install --frozen-lockfile
+
+        FROM deps AS builder
+        WORKDIR /app
+        ARG BACKEND_INTERNAL_URL
+        ARG NEXT_PUBLIC_API_URL
+        ARG NEXT_PUBLIC_DGA_REDIRECT_URI
+        ARG NEXT_PUBLIC_MAPBOX_TOKEN
+        ENV BACKEND_INTERNAL_URL=$$BACKEND_INTERNAL_URL
+        ENV NEXT_PUBLIC_API_URL=$$NEXT_PUBLIC_API_URL
+        ENV NEXT_PUBLIC_DGA_REDIRECT_URI=$$NEXT_PUBLIC_DGA_REDIRECT_URI
+        ENV NEXT_PUBLIC_MAPBOX_TOKEN=$$NEXT_PUBLIC_MAPBOX_TOKEN
+        COPY . .
+        RUN bun run build
+
+        FROM node:22-bookworm-slim AS runner
+        WORKDIR /app
+        ENV NODE_ENV=production
+        ENV PORT=3003
+        COPY --from=builder /app/public ./public
+        COPY --from=builder /app/.next/standalone ./
+        COPY --from=builder /app/.next/static ./.next/static
+        EXPOSE 3003
+        CMD ["node", "server.js"]
+      args:
+        BACKEND_INTERNAL_URL: http://backend:3001
+        NEXT_PUBLIC_API_URL: https://${PUBLIC_HOST:?Set PUBLIC_HOST}
+        NEXT_PUBLIC_DGA_REDIRECT_URI: https://${PUBLIC_HOST:?Set PUBLIC_HOST}/auth/login-callback
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      BACKEND_INTERNAL_URL: http://backend:3001
+      COOKIE_SECURE: "true"
+      NEXT_PUBLIC_API_URL: https://${PUBLIC_HOST:?Set PUBLIC_HOST}
+      NEXT_PUBLIC_DGA_REDIRECT_URI: https://${PUBLIC_HOST:?Set PUBLIC_HOST}/auth/login-callback
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+
+  backend:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:22-bookworm-slim AS builder
+        WORKDIR /app
+        RUN apt-get update \
+          && apt-get install -y --no-install-recommends openssl ca-certificates \
+          && rm -rf /var/lib/apt/lists/*
+        COPY package.json package-lock.json ./
+        RUN npm ci
+        COPY nest-cli.json tsconfig.json tsconfig.build.json prisma.config.ts ./
+        COPY prisma ./prisma
+        COPY src ./src
+        RUN npx prisma generate
+        RUN npm run build
+
+        FROM node:22-bookworm-slim AS runner
+        WORKDIR /app
+        RUN apt-get update \
+          && apt-get install -y --no-install-recommends openssl ca-certificates \
+          && rm -rf /var/lib/apt/lists/*
+        ENV NODE_ENV=production
+        COPY package.json package-lock.json ./
+        COPY --from=builder /app/node_modules ./node_modules
+        COPY --from=builder /app/dist ./dist
+        COPY --from=builder /app/prisma ./prisma
+        COPY --from=builder /app/src ./src
+        COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+        EXPOSE 3001
+        CMD ["sh", "-c", "npx prisma migrate deploy && if node -e \"const {Pool}=require('pg'); const pool=new Pool({connectionString:process.env.DATABASE_URL}); pool.query('select count(*)::int as count from system_users').then(r=>pool.end().then(()=>process.exit(Number(r.rows[0].count)===0?0:2))).catch(e=>{console.error(e); process.exit(1);});\"; then echo 'Database is empty; running seed'; ALLOW_SEED=true npx prisma db seed; else echo 'Database already has users; skipping seed'; fi && node dist/main"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:3001/api').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://elicense:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/elicense?schema=public
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64:?Set JWT_PRIVATE_KEY_BASE64}
+      JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:?Set JWT_PUBLIC_KEY_BASE64}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-7}
+      APP_ORIGIN: https://${PUBLIC_HOST:?Set PUBLIC_HOST}
+      ADMIN_ORIGIN: https://${PUBLIC_HOST:?Set PUBLIC_HOST}
+      DGA_OIDC_ENV: ${DGA_OIDC_ENV:-production}
+      DGA_OIDC_MODE: real
+      DGA_OIDC_BASE_URL: ${DGA_OIDC_BASE_URL:-https://connect.egov.go.th}
+      DGA_OIDC_CLIENT_ID: ${DGA_OIDC_CLIENT_ID:?Set DGA_OIDC_CLIENT_ID}
+      DGA_OIDC_CLIENT_SECRET: ${DGA_OIDC_CLIENT_SECRET:?Set DGA_OIDC_CLIENT_SECRET}
+      DGA_OIDC_REDIRECT_URI: https://${PUBLIC_HOST:?Set PUBLIC_HOST}/auth/login-callback
+      DGA_OIDC_ALLOWED_REDIRECT_URIS: https://${PUBLIC_HOST:?Set PUBLIC_HOST}/auth/login-callback
+      DGA_OIDC_LOGOUT_REDIRECT_URI: https://${PUBLIC_HOST:?Set PUBLIC_HOST}/auth/logout-callback
+      DGA_OIDC_SCOPE: openid citizen_id given_name family_name
+      DGA_OIDC_STATE_SECRET: ${DGA_OIDC_STATE_SECRET:?Set DGA_OIDC_STATE_SECRET}
+      DGA_OIDC_ID_TOKEN_ENCRYPTION_KEY: ${DGA_OIDC_ID_TOKEN_ENCRYPTION_KEY:?Set DGA_OIDC_ID_TOKEN_ENCRYPTION_KEY}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-elicense}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-elicense-private}
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: elicense
+      POSTGRES_USER: elicense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U elicense -d elicense
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-elicense}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test:
+        - CMD
+        - mc
+        - ready
+        - local
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data: {}
+  minio_data: {}
+  caddy_data: {}
+  caddy_config: {}

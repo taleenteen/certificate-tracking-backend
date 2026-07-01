@@ -20,7 +20,6 @@ describe('security guards', () => {
             jti: 'jti',
             roles: ['admin'],
             agencyId: null,
-            zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.app,
           },
@@ -39,7 +38,6 @@ describe('security guards', () => {
             jti: 'jti',
             roles: ['super_admin'],
             agencyId: null,
-            zoneIds: [],
             authProvider: AuthProvider.self,
             clientType: ClientType.app,
           },
@@ -48,14 +46,13 @@ describe('security guards', () => {
     ).toThrow(ForbiddenException);
   });
 
-  it('gives the admin tier a null scope (no zone/agency filter)', () => {
+  it('gives the admin tier a null scope (no agency filter)', () => {
     const request = {
       user: {
         sub: 'super',
         jti: 'jti',
         roles: ['super_admin'],
         agencyId: null,
-        zoneIds: [],
         authProvider: AuthProvider.self,
         clientType: ClientType.web_admin,
       },
@@ -66,20 +63,19 @@ describe('security guards', () => {
 
   it('derives officer scope only from JWT claims', () => {
     const request = {
-      query: { zoneId: 'client-controlled-zone' },
+      query: { agencyId: 'client-controlled-agency' },
       user: {
         sub: 'officer',
         jti: 'jti',
         roles: ['officer'],
         agencyId: 'mock-agency-uuid',
-        zoneIds: ['jwt-zone'],
         authProvider: AuthProvider.tang_rat,
         clientType: ClientType.app,
       },
     };
     expect(new ScopeGuard().canActivate(context(request))).toBe(true);
     expect(request).toMatchObject({
-      scope: { agencyId: 'mock-agency-uuid', zoneIds: ['jwt-zone'] },
+      scope: { agencyId: 'mock-agency-uuid' },
     });
   });
 });

@@ -8,14 +8,10 @@
  *   `admin` (and `super_admin`).
  * - `admin`: full operational access; can grant roles strictly below admin.
  * - `officer`: field officer — performs inspections, assigns tasks, approves
- *   reports; scoped to their agency + zones.
+ *   reports; scoped to their agency.
  * - `public`: citizen/business read-only access.
  */
-export type Role =
-  | 'public'
-  | 'officer'
-  | 'admin'
-  | 'super_admin';
+export type Role = 'public' | 'officer' | 'admin' | 'super_admin';
 
 export const ROLE_RANK: Record<string, number> = {
   public: 0,

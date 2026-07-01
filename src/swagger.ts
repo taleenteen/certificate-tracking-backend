@@ -17,12 +17,12 @@ export function buildSwaggerConfig() {
         '**Authentication.** Most endpoints require a Bearer access token',
         '(RS256 JWT, 15-min TTL). Obtain one from `POST /api/auth/register` or',
         '`POST /api/auth/login` (PUBLIC), `POST /api/auth/tang-rat`',
-        '(PUBLIC/INSPECTOR/SUPERVISOR), or `POST /api/auth/self` (ADMIN + TOTP).',
+        '(PUBLIC/OFFICER), or `POST /api/auth/self` (ADMIN + TOTP).',
         'Click **Authorize** and paste the `accessToken` to call protected routes.',
         'See `docs/AUTHENTICATION.md` for a plain-English walkthrough.',
         '',
-        '**Scope.** INSPECTOR/SUPERVISOR responses are filtered server-side by the',
-        "caller's zones and agency; clients cannot widen scope via query params.",
+        '**Scope.** OFFICER responses are filtered server-side by the',
+        "caller's agency; clients cannot widen scope via query params.",
       ].join('\n'),
     )
     .setVersion('1.0')
@@ -51,9 +51,12 @@ export function buildSwaggerConfig() {
     )
     .addTag('Notifications', 'In-app notifications for the current user')
     .addTag('Inspection', 'Inspection tasks and reports state machine')
+    .addTag(
+      'Officer',
+      'Officer field reporting, export, and QR profile verification',
+    )
     .addTag('Dashboards', 'Role-specific aggregate dashboards')
     .addTag('Users', 'User administration (admin / officer)')
-    .addTag('Zones', 'Zone master data')
     .addTag('Sync', 'Agency data sync and CSV import')
     .addTag('Audit', 'Audit log listing')
     .addTag('Export', 'PDF/XLSX exports')

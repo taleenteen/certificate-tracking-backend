@@ -12,15 +12,14 @@ export class DashboardService {
     startOfMonth.setUTCDate(1);
     startOfMonth.setUTCHours(0, 0, 0, 0);
 
-    const zoneWhere: Prisma.InspectionTaskWhereInput = {
-      zoneId: { in: scope.zoneIds },
+    const agencyWhere: Prisma.InspectionTaskWhereInput = {
       OR: [
         { license: { licenseType: { agencyId: scope.agencyId } } },
         { licenseId: null },
       ],
     };
 
-    const [personalCounts, myCompletedThisMonth, recentTasks, zoneCounts] =
+    const [personalCounts, myCompletedThisMonth, recentTasks, agencyCounts] =
       await Promise.all([
         this.prisma.inspectionTask.groupBy({
           by: ['status'],
@@ -42,7 +41,7 @@ export class DashboardService {
         }),
         this.prisma.inspectionTask.groupBy({
           by: ['status'],
-          where: zoneWhere,
+          where: agencyWhere,
           _count: true,
         }),
       ]);
@@ -50,7 +49,7 @@ export class DashboardService {
     const personal = (status: TaskStatus) =>
       personalCounts.find((item) => item.status === status)?._count ?? 0;
     const taskCountsByStatus = Object.fromEntries(
-      zoneCounts.map((item) => [item.status, item._count]),
+      agencyCounts.map((item) => [item.status, item._count]),
     );
     const terminal =
       (taskCountsByStatus.APPROVED ?? 0) +
@@ -73,12 +72,11 @@ export class DashboardService {
   }
 
   async admin() {
-    const [users, zoneCount, licenses, syncLogs] = await Promise.all([
+    const [users, licenses, syncLogs] = await Promise.all([
       this.prisma.systemUser.findMany({
         where: { deletedAt: null },
         select: { roles: true },
       }),
-      this.prisma.zone.count({ where: { isActive: true } }),
       this.prisma.license.groupBy({
         by: ['status'],
         where: { deletedAt: null },
@@ -98,7 +96,6 @@ export class DashboardService {
       }, {});
     return {
       userCounts,
-      zoneCount,
       licenseCounts: Object.fromEntries(
         licenses.map((item) => [item.status, item._count]),
       ),

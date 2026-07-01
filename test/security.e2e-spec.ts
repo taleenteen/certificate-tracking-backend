@@ -9,7 +9,7 @@
  *
  * Covered:
  *   1. Refresh token replay detection — all sessions revoked on reuse
- *   2. Scope isolation — inspector cannot access out-of-zone tasks
+ *   2. Scope isolation — officer cannot access out-of-agency tasks
  *   3. Agency isolation — DIW supervisor cannot read ACFS-only task list
  *   4. Conflict-of-interest — assignee == business owner → 409
  *   5. Tang Rat ADMIN rejection — admin cannot use tang-rat endpoint
@@ -149,10 +149,10 @@ describe('Security integration tests', () => {
     });
   });
 
-  // 2 — Scope isolation: zone -----------------------------------------------
+  // 2 — Scope isolation: agency ---------------------------------------------
 
-  describe('Scope isolation — zone', () => {
-    it('inspector cannot fetch a task that is not assigned to them', async () => {
+  describe('Scope isolation — agency', () => {
+    it('officer cannot fetch an out-of-agency task', async () => {
       // inspector-1 is DIW; their own task list scopes to assignedTo = self.
       const { accessToken: inspector1Token } = await tangRatLogin(
         app,
@@ -166,7 +166,7 @@ describe('Security integration tests', () => {
         (ownRes.body as Array<{ id: string }>).map((t) => t.id),
       );
 
-      // The ACFS supervisor's tasks are a different agency/zone — guaranteed not
+      // The ACFS officer's tasks are a different agency — guaranteed not
       // assigned to inspector-1. Use one as the out-of-scope target.
       const { accessToken: supAcfsToken } = await tangRatLogin(
         app,
@@ -209,7 +209,7 @@ describe('Security integration tests', () => {
   // 3 — Agency isolation ----------------------------------------------------
 
   describe('Scope isolation — agency', () => {
-    it('ACFS supervisor cannot see DIW tasks in their zone list', async () => {
+    it('ACFS officer cannot see DIW tasks in their agency list', async () => {
       const { accessToken: supAcfsToken } = await tangRatLogin(
         app,
         'mock-supervisor-acfs',
@@ -265,7 +265,7 @@ describe('Security integration tests', () => {
         return;
       }
 
-      // Find a business owned by the public owner in the DIW supervisor's zones.
+      // Find a business owned by the public owner.
       const businessesRes = await request(app.getHttpServer())
         .get('/api/businesses')
         .expect(200);
@@ -282,7 +282,7 @@ describe('Security integration tests', () => {
         return;
       }
 
-      // Get an inspector in the DIW zone who IS the public owner (for a real
+      // Get an inspector who IS the public owner (for a real
       // conflict, the inspector's systemUser ID must equal business.ownerUserId).
       // The seed user "public-owner" has roles: ['public'] so cannot be assigned
       // as inspector. Instead, find a DIW inspector whose user ID equals the

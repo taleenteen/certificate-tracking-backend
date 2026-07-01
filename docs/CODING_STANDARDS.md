@@ -57,15 +57,15 @@ createTask(
 
 ## 4. Scope and soft-delete are non-negotiable
 
-- Every scoped query for INSPECTOR/SUPERVISOR must filter by
-  `zoneId IN scope.zoneIds` and agency. Build the filter with
+- Every scoped staff query must filter by agency. Zone assignment was removed
+  from the officer workflow on 2026-07-01; do not add `UserZone`, `Zone`, or
+  `zoneId` filters back into staff authorization. Build agency filters with
   `satisfies Prisma.<Model>WhereInput`:
 
   ```ts
   return {
-    zoneId: { in: scope.zoneIds },
     OR: [
-      { license: { licenseType: { agency: scope.agency } } },
+      { license: { licenseType: { agencyId: scope.agencyId } } },
       { licenseId: null },
     ],
   } satisfies Prisma.InspectionTaskWhereInput;
@@ -77,20 +77,23 @@ createTask(
 
 ## 4b. Roles & authorization
 
-Five hierarchical roles (`src/common/auth.roles.ts`):
-`public(0) < inspector(1) < supervisor(2) < admin(3) < super_admin(4)`.
+Four hierarchical platform roles (`src/common/auth.roles.ts`):
+`public(0) < officer(1) < admin(2) < super_admin(3)`.
 
-- `@Roles('supervisor')` is satisfied by supervisor **and anything above** —
+- `@Roles('officer')` is satisfied by officer **and anything above** —
   `RolesGuard` is rank-based (`satisfiesRole`). Tag the *lowest* role allowed.
 - Never write `roles.includes('admin')` in services. Use the helpers:
   `isAdminTier(roles)` (admin or super_admin → null scope, web-portal login),
   `canGrantRole(actor, role)` (only super_admin grants admin/super_admin),
   `canManageUser(actor, target)` (cannot modify an equal/higher-ranked user).
+- `ScopeGuard` treats admin tier as unscoped and public-only users as unscoped.
+  Any user satisfying `officer` must receive `{ agencyId }` scope, even if the
+  roles array also includes `public`.
 - Scoped service methods accept `RequestScope | null`; when scope is `null`
-  (admin tier) apply **no** zone/agency filter (admins see everything). Never
-  dereference `scope.zoneIds` without first handling the null/admin case.
-- Role-mutating endpoints (`updateRoles`, `suspend`, `remove`) take the acting
-  `@CurrentUser()` and enforce the grant/manage caps in the service.
+  (admin tier) apply **no** agency filter (admins see everything).
+- User-management mutations (`create`, `updateRoles`, `updateAgency`,
+  `suspend`, `remove`) take the acting `@CurrentUser()` and enforce the
+  grant/manage caps in the service.
 
 ## 5. Errors
 

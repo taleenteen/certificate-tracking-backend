@@ -21,9 +21,9 @@ export class DashboardController {
   @ApiOperation({
     summary: 'Officer dashboard',
     description:
-      'Combined personal task counts (assigned to me) and zone-level ' +
+      'Combined personal task counts (assigned to me) and agency-level ' +
       'aggregates (task counts by status, compliance rate) scoped to the ' +
-      "officer's zones + agency.",
+      "officer's agency.",
   })
   @ApiOkResponse({ description: 'Officer dashboard aggregates.' })
   @Get('officer')
@@ -35,7 +35,7 @@ export class DashboardController {
   @ApiOperation({
     summary: 'Admin dashboard',
     description:
-      'System-wide counts: users by role, zones, licenses by status, and last ' +
+      'System-wide counts: users by role, licenses by status, and last ' +
       'sync per agency.',
   })
   @ApiOkResponse({ description: 'Admin dashboard aggregates.' })

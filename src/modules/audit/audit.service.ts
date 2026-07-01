@@ -20,13 +20,11 @@ export class AuditService {
               lte: query.dateTo ? new Date(query.dateTo) : undefined,
             }
           : undefined,
-      // Admin sees all. Supervisor is scoped to their own agency AND zones:
-      // only audit rows produced by users sharing one of the officer's zones.
+      // Admin sees all. Officer sees audit rows produced by users in their agency.
       user: isAdminTier(user.roles)
         ? undefined
         : {
             agencyId: user.agencyId!,
-            userZones: { some: { zoneId: { in: user.zoneIds } } },
           },
     };
     const [data, total] = await this.prisma.$transaction([

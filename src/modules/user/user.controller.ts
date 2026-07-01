@@ -7,9 +7,7 @@ import {
   Patch,
   Post,
   Query,
-  Req,
 } from '@nestjs/common';
-import type { Request } from 'express';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -26,7 +24,6 @@ import {
   CreateUserDto,
   UpdateAgencyDto,
   UpdateRolesDto,
-  UpdateZonesDto,
   UserQueryDto,
 } from './user.dto';
 import { UserService } from './user.service';
@@ -41,8 +38,8 @@ export class UserController {
   @ApiOperation({
     summary: 'List users',
     description:
-      'Admin sees all users; officer sees only their own agency. Filter by ' +
-      'role / zone / status / free-text query.',
+      'super_admin sees all users; admin/officer see their own agency. Filter by ' +
+      'role / status / free-text query.',
   })
   @ApiOkResponse({ description: 'Matching users.' })
   @Get()
@@ -54,7 +51,7 @@ export class UserController {
   @ApiOperation({
     summary: 'Create a user (admin/super_admin)',
     description:
-      'Admin creates SUPERVISOR/INSPECTOR accounts. super_admin may also create ADMIN accounts.',
+      'Admin creates public/officer accounts. super_admin may also create admin accounts.',
   })
   @ApiCreatedResponse({ description: 'The created user (with temp password).' })
   @Post()
@@ -82,11 +79,11 @@ export class UserController {
   @ApiOperation({
     summary: 'Set user agency',
     description:
-      'Admin: any user. Supervisor: only within their own agency (else 403).',
+      'super_admin: any manageable user. admin/officer: only within their own agency (else 403).',
   })
   @ApiParam({ name: 'id', description: 'User uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'The updated user.' })
-  @ApiForbiddenResponse({ description: 'Cross-agency change by a officer.' })
+  @ApiForbiddenResponse({ description: 'Cross-agency or rank violation.' })
   @Patch(':id/agency')
   agency(
     @Param('id') id: string,
@@ -94,25 +91,6 @@ export class UserController {
     @CurrentUser() user: JwtClaims,
   ) {
     return this.users.updateAgency(id, dto.agencyId, user);
-  }
-
-  @Roles('officer', 'admin')
-  @ApiOperation({
-    summary: 'Replace a user’s zones',
-    description:
-      'Replaces the user’s zone assignments. Supervisors may only assign ' +
-      'their own zones.',
-  })
-  @ApiParam({ name: 'id', description: 'User uuid', format: 'uuid' })
-  @ApiCreatedResponse({ description: 'The updated zone assignments.' })
-  @Post(':id/zones')
-  zones(
-    @Param('id') id: string,
-    @Body() dto: UpdateZonesDto,
-    @CurrentUser() user: JwtClaims,
-    @Req() request: Request,
-  ) {
-    return this.users.updateZones(id, dto.zoneIds, user, request.scope);
   }
 
   @Roles('admin')

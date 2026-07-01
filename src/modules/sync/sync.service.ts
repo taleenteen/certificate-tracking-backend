@@ -46,20 +46,15 @@ export class SyncService {
     const type = await this.prisma.licenseType.findFirst({
       where: { code: record.typeCode, agencyId },
     });
-    const zone = await this.prisma.zone.findFirst({
-      where: { isActive: true },
-      orderBy: { code: 'asc' },
-    });
-    if (!type || !zone) throw new BadRequestException('Missing master data');
+    if (!type) throw new BadRequestException('Missing master data');
     let business = await this.prisma.business.findFirst({
       where: { nameTh: record.businessName, deletedAt: null },
     });
     business ??= await this.prisma.business.create({
       data: {
         nameTh: record.businessName,
-        zoneId: zone.id,
         address: 'MOCK: imported address unavailable',
-        province: zone.province,
+        province: 'ไม่ระบุ',
       },
     });
     return this.prisma.license.upsert({
@@ -108,7 +103,9 @@ export class SyncService {
       throw new ForbiddenException();
     }
     if (agencyRecord.dataSource !== AgencyDataSource.API) {
-      throw new BadRequestException('This agency uses CSV import, not API sync');
+      throw new BadRequestException(
+        'This agency uses CSV import, not API sync',
+      );
     }
     const recent = await this.prisma.syncLog.findFirst({
       where: {
@@ -229,7 +226,17 @@ export class SyncService {
       },
       distinct: ['agencyId'],
       orderBy: [{ agencyId: 'asc' }, { startedAt: 'desc' }],
-      include: { agency: { select: { id: true, code: true, nameTh: true, apiStatus: true, lastSyncedAt: true } } },
+      include: {
+        agency: {
+          select: {
+            id: true,
+            code: true,
+            nameTh: true,
+            apiStatus: true,
+            lastSyncedAt: true,
+          },
+        },
+      },
     });
   }
 }

@@ -39,7 +39,6 @@ export class LicenseCron {
               isActive: true,
               roles: { has: 'officer' },
               agencyId: license.licenseType.agencyId,
-              userZones: { some: { zoneId: license.business.zoneId } },
             },
             select: { id: true },
           });
@@ -91,7 +90,6 @@ export class LicenseCron {
           isActive: true,
           roles: { has: 'officer' },
           agencyId: license.licenseType.agencyId,
-          userZones: { some: { zoneId: license.business.zoneId } },
         },
       });
       await this.prisma.notification.createMany({

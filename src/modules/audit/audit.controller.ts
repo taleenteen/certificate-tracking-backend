@@ -21,7 +21,7 @@ export class AuditController {
   @ApiOperation({
     summary: 'List audit logs',
     description:
-      'Admin sees all; officer is scoped to their agency + zones. Filter by ' +
+      'Admin sees all; officer is scoped to their agency. Filter by ' +
       'user / entity type / date range. Returns `{ data, meta }`.',
   })
   @ApiOkResponse({ description: 'Paginated audit log entries.' })

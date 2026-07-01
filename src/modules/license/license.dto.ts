@@ -9,6 +9,34 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { LicenseStatus } from '@prisma/client';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+
+export class PublicLicenseSearchDto extends PaginationDto {
+  /**
+   * Business / branch name search.
+   * @example โรงงาน
+   */
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  /**
+   * Optional license number search.
+   * @example RNG4
+   */
+  @IsOptional()
+  @IsString()
+  licenseNumber?: string;
+
+  /**
+   * Optional license status filter.
+   * @example ACTIVE
+   */
+  @IsOptional()
+  @IsEnum(LicenseStatus)
+  status?: LicenseStatus;
+}
 
 export class CreateLicenseTypeDto {
   /** Short unique code, e.g. "RNG4". */

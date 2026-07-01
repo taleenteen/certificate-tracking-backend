@@ -1,5 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { MockDbdProvider } from './dbd.provider';
+import { MockDgaOidcProvider } from './dga-oidc.provider';
 import { MockGdxProvider } from './gdx.provider';
 import { MockTangRatProvider } from './tangrat.provider';
 
@@ -29,5 +30,25 @@ describe('mock external providers', () => {
     await expect(
       new MockGdxProvider().fetchAcfsLicenses(),
     ).resolves.toHaveLength(5);
+  });
+
+  it('maps mock DGA OIDC code exchange to UserInfo identity', async () => {
+    const provider = new MockDgaOidcProvider();
+    const authorizeUrl = provider.authorizeUrl({
+      state: 'signed-state',
+      redirectUri: 'http://localhost:3000/auth/dga/callback',
+    });
+    expect(authorizeUrl).toContain('/connect/authorize');
+    expect(authorizeUrl).toContain('response_type=code');
+    expect(authorizeUrl).toContain('state=signed-state');
+
+    const token = await provider.exchangeCode('mock-dga-public-owner');
+    await expect(provider.userInfo(token.accessToken)).resolves.toMatchObject({
+      sub: 'dga-sub-public-owner',
+      citizenId: '1000065432051',
+    });
+    await expect(provider.exchangeCode('invalid')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 });

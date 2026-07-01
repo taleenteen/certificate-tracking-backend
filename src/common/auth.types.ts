@@ -5,7 +5,6 @@ export interface JwtClaims {
   jti: string;
   roles: string[];
   agencyId: string | null;
-  zoneIds: string[];
   authProvider: AuthProvider;
   clientType: ClientType;
   citizenSub?: string;
@@ -26,6 +25,5 @@ export interface JuristicContext {
 }
 
 export interface RequestScope {
-  zoneIds: string[];
   agencyId: string;
 }

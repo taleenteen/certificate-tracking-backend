@@ -8,10 +8,18 @@ export class SessionCleanupService {
 
   @Cron('0 * * * *')
   cleanup() {
-    return this.prisma.userSession.deleteMany({
-      where: {
-        expiresAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-      },
-    });
+    const now = new Date();
+    return this.prisma.$transaction([
+      this.prisma.userSession.deleteMany({
+        where: {
+          expiresAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+      this.prisma.dgaOidcState.deleteMany({
+        where: {
+          OR: [{ expiresAt: { lt: now } }, { consumedAt: { not: null } }],
+        },
+      }),
+    ]);
   }
 }

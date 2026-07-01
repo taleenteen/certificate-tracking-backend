@@ -81,6 +81,27 @@ enum JoinRequestStatus {
   EXPIRED
 }
 
+enum OfficerInspectionStatus {
+  SUBMITTED
+  EXPORTED
+  VOIDED
+}
+
+enum OfficerInspectionItemResult {
+  PASSED
+  FAILED
+  NEEDS_FOLLOW_UP
+  NOTE_ONLY
+}
+
+enum OfficerProfileScanResult {
+  VALID
+  INACTIVE
+  NOT_OFFICER
+  EXPIRED_TOKEN
+  INVALID_TOKEN
+}
+
 model SystemUser {
   id                 String    @id @default(uuid()) @db.Uuid
   username           String?   @unique @db.VarChar(50)
@@ -134,7 +155,6 @@ model SystemUser {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
-  userZones       UserZone[]
   sessions        UserSession[]
   providerLinks   AuthProviderLink[]
   resetTokens     PasswordResetToken[]
@@ -143,6 +163,9 @@ model SystemUser {
   createdTasks    InspectionTask[]   @relation("TaskCreator")
   reports         InspectionReport[] @relation("ReportInspector")
   reviewedReports InspectionReport[] @relation("ReportReviewer")
+  officerInspections OfficerInspection[] @relation("OfficerInspectionOfficer")
+  officerInspectionEvidence OfficerInspectionEvidence[] @relation("OfficerInspectionEvidenceUploader")
+  officerProfileScans OfficerPublicProfileScanLog[] @relation("OfficerProfileScanOfficer")
   auditLogs       AuditLog[]
   notifications   Notification[]
   syncLogs        SyncLog[]
@@ -175,36 +198,9 @@ model Agency {
   users        SystemUser[]
   licenseTypes LicenseType[]
   syncLogs     SyncLog[]
+  officerInspections OfficerInspection[]
 
   @@map("agencies")
-}
-
-model Zone {
-  id        String   @id @default(uuid()) @db.Uuid
-  code      String   @unique @db.VarChar(20)
-  nameTh    String   @map("name_th") @db.VarChar(200)
-  province  String   @db.VarChar(100)
-  boundary  Json?
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  userZones  UserZone[]
-  businesses Business[]
-  tasks      InspectionTask[]
-
-  @@map("zones")
-}
-
-model UserZone {
-  userId     String   @map("user_id") @db.Uuid
-  zoneId     String   @map("zone_id") @db.Uuid
-  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
-
-  user SystemUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  zone Zone       @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-
-  @@id([userId, zoneId])
-  @@map("user_zones")
 }
 
 model UserSession {
@@ -216,6 +212,7 @@ model UserSession {
   clientType        ClientType   @default(app) @map("client_type")
   tangRatSub        String?      @map("tang_rat_sub") @db.VarChar(200)
   tangRatToken      String?      @map("tang_rat_token") @db.Text
+  providerIdToken   String?      @map("provider_id_token") @db.Text
   ipAddress         String?      @map("ip_address") @db.VarChar(45)
   userAgent         String?      @map("user_agent") @db.Text
   deviceFingerprint String?      @map("device_fingerprint") @db.VarChar(255)
@@ -283,6 +280,7 @@ model JuristicPerson {
   invites      JuristicInvite[]
   joinRequests JuristicJoinRequest[]
   businesses   Business[]
+  officerInspections OfficerInspection[]
 
   @@map("juristic_persons")
 }
@@ -363,7 +361,6 @@ model Business {
   nameTh           String    @map("name_th") @db.VarChar(300)
   juristicPersonId String?   @map("juristic_person_id") @db.Uuid
   ownerUserId      String?   @map("owner_user_id") @db.Uuid
-  zoneId           String    @map("zone_id") @db.Uuid
   address          String    @db.Text
   province         String    @db.VarChar(100)
   latitude         Decimal?  @db.Decimal(9, 6)
@@ -376,11 +373,10 @@ model Business {
 
   juristicPerson JuristicPerson? @relation(fields: [juristicPersonId], references: [id])
   owner          SystemUser?     @relation("BusinessOwner", fields: [ownerUserId], references: [id])
-  zone           Zone            @relation(fields: [zoneId], references: [id])
   licenses       License[]
   tasks          InspectionTask[]
+  officerInspections OfficerInspection[]
 
-  @@index([zoneId])
   @@index([province])
   @@map("businesses")
 }
@@ -430,6 +426,7 @@ model License {
   renewals    License[]   @relation("RenewalChain")
   documents   LicenseDocument[]
   tasks       InspectionTask[]
+  officerInspectionItems OfficerInspectionItem[]
 
   @@index([businessId])
   @@index([licenseTypeId])
@@ -480,7 +477,6 @@ model InspectionTask {
   taskNo       String     @unique @map("task_no") @db.VarChar(30)
   businessId   String     @map("business_id") @db.Uuid
   licenseId    String?    @map("license_id") @db.Uuid
-  zoneId       String     @map("zone_id") @db.Uuid
   assignedTo   String?    @map("assigned_to") @db.Uuid
   createdBy    String     @map("created_by") @db.Uuid
   status       TaskStatus @default(ASSIGNED)
@@ -493,13 +489,11 @@ model InspectionTask {
 
   business Business   @relation(fields: [businessId], references: [id])
   license  License?   @relation(fields: [licenseId], references: [id])
-  zone     Zone       @relation(fields: [zoneId], references: [id])
   assignee SystemUser? @relation("TaskAssignee", fields: [assignedTo], references: [id])
   creator  SystemUser @relation("TaskCreator", fields: [createdBy], references: [id])
   reports  InspectionReport[]
 
   @@index([assignedTo, status])
-  @@index([zoneId, status])
   @@map("inspection_tasks")
 }
 
@@ -529,6 +523,94 @@ model InspectionReport {
 
   @@index([taskId])
   @@map("inspection_reports")
+}
+
+model OfficerInspection {
+  id               String                   @id @default(uuid()) @db.Uuid
+  inspectionNo     String                   @unique @map("inspection_no") @db.VarChar(30)
+  officerId        String                   @map("officer_id") @db.Uuid
+  businessId       String                   @map("business_id") @db.Uuid
+  juristicPersonId String?                  @map("juristic_person_id") @db.Uuid
+  agencyId         String                   @map("agency_id") @db.Uuid
+  officerSnapshot  Json                     @map("officer_snapshot")
+  businessSnapshot Json                     @map("business_snapshot")
+  status           OfficerInspectionStatus  @default(SUBMITTED)
+  summaryNote      String?                  @map("summary_note") @db.Text
+  inspectedAt      DateTime                 @map("inspected_at") @db.Timestamptz()
+  submittedAt      DateTime                 @default(now()) @map("submitted_at") @db.Timestamptz()
+  exportedAt       DateTime?                @map("exported_at") @db.Timestamptz()
+  pdfObjectKey     String?                  @map("pdf_object_key") @db.VarChar(500)
+  xlsxObjectKey    String?                  @map("xlsx_object_key") @db.VarChar(500)
+  deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz()
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz()
+
+  officer        SystemUser       @relation("OfficerInspectionOfficer", fields: [officerId], references: [id])
+  business       Business         @relation(fields: [businessId], references: [id])
+  juristicPerson JuristicPerson?  @relation(fields: [juristicPersonId], references: [id])
+  agency         Agency           @relation(fields: [agencyId], references: [id])
+  items          OfficerInspectionItem[]
+
+  @@index([officerId, submittedAt])
+  @@index([businessId, submittedAt])
+  @@index([juristicPersonId, submittedAt])
+  @@index([agencyId, submittedAt])
+  @@map("officer_inspections")
+}
+
+model OfficerInspectionItem {
+  id              String                       @id @default(uuid()) @db.Uuid
+  inspectionId    String                       @map("inspection_id") @db.Uuid
+  licenseId       String                       @map("license_id") @db.Uuid
+  sequence        Int
+  result          OfficerInspectionItemResult?
+  detailNote      String?                      @map("detail_note") @db.Text
+  findings        Json?
+  licenseSnapshot Json                         @map("license_snapshot")
+  createdAt       DateTime                     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime                     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  inspection OfficerInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  license    License           @relation(fields: [licenseId], references: [id])
+  evidence   OfficerInspectionEvidence[]
+
+  @@unique([inspectionId, licenseId])
+  @@index([licenseId])
+  @@map("officer_inspection_items")
+}
+
+model OfficerInspectionEvidence {
+  id                 String   @id @default(uuid()) @db.Uuid
+  inspectionItemId   String   @map("inspection_item_id") @db.Uuid
+  fileName           String   @map("file_name") @db.VarChar(255)
+  objectKey          String   @map("object_key") @db.VarChar(500)
+  mimeType           String   @map("mime_type") @db.VarChar(100)
+  fileSizeBytes      Int      @map("file_size_bytes")
+  uploadedBy         String   @map("uploaded_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  inspectionItem OfficerInspectionItem @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
+  uploader       SystemUser            @relation("OfficerInspectionEvidenceUploader", fields: [uploadedBy], references: [id])
+
+  @@index([inspectionItemId])
+  @@index([uploadedBy, createdAt])
+  @@map("officer_inspection_evidence")
+}
+
+model OfficerPublicProfileScanLog {
+  id          String                   @id @default(uuid()) @db.Uuid
+  officerId   String?                  @map("officer_id") @db.Uuid
+  scannedAt   DateTime                 @default(now()) @map("scanned_at") @db.Timestamptz()
+  ipAddress   String?                  @map("ip_address") @db.VarChar(45)
+  userAgent   String?                  @map("user_agent") @db.Text
+  qrTokenId   String?                  @map("qr_token_id") @db.VarChar(64)
+  result      OfficerProfileScanResult
+
+  officer SystemUser? @relation("OfficerProfileScanOfficer", fields: [officerId], references: [id])
+
+  @@index([officerId, scannedAt])
+  @@index([qrTokenId, scannedAt])
+  @@map("officer_public_profile_scan_logs")
 }
 
 model Notification {
@@ -608,4 +690,19 @@ model AccountLinkChallenge {
 
   @@index([initiatorId])
   @@map("account_link_challenges")
+}
+
+model DgaOidcState {
+  id          String    @id @default(uuid()) @db.Uuid
+  nonce       String    @unique @db.VarChar(64)
+  stateHash   String    @unique @map("state_hash") @db.VarChar(64)
+  redirectUri String    @map("redirect_uri") @db.Text
+  scope       String    @db.VarChar(200)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz()
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([expiresAt])
+  @@index([consumedAt])
+  @@map("dga_oidc_states")
 }

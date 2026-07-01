@@ -6,7 +6,7 @@ import {
 import { AuthProvider, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { JwtClaims, RequestScope } from '../../common/auth.types';
+import { JwtClaims } from '../../common/auth.types';
 import {
   canGrantRole,
   canManageUser,
@@ -22,10 +22,11 @@ export class UserService {
   list(query: UserQueryDto, actor: JwtClaims) {
     const where: Prisma.SystemUserWhereInput = {
       deletedAt: null,
-      agencyId: actor.roles.includes('super_admin') ? undefined : actor.agencyId!,
+      agencyId: actor.roles.includes('super_admin')
+        ? undefined
+        : actor.agencyId!,
       roles: query.role ? { has: query.role } : undefined,
       isActive: query.status,
-      userZones: query.zoneId ? { some: { zoneId: query.zoneId } } : undefined,
       OR: query.q
         ? [
             { fullName: { contains: query.q, mode: 'insensitive' } },
@@ -47,19 +48,25 @@ export class UserService {
         isActive: true,
         mustChangePassword: true,
         lastLoginAt: true,
-        userZones: { include: { zone: true } },
       },
       orderBy: { fullName: 'asc' },
     });
   }
 
   async create(dto: CreateUserDto, actor?: JwtClaims) {
-    if (dto.roles.includes('admin') && !actor?.roles.includes('super_admin')) {
-      throw new ForbiddenException('Only super_admin may create admin accounts');
+    for (const role of dto.roles) {
+      if (!actor || !canGrantRole(actor.roles, role)) {
+        throw new ForbiddenException(`Not allowed to grant role: ${role}`);
+      }
     }
     // Use caller-supplied password if given; otherwise generate a temp one (forces change on first login).
-    const chosenPassword = dto.initialPassword ?? (dto.username ? `Tmp-${randomBytes(8).toString('base64url')}!` : undefined);
-    const tempPassword = !dto.initialPassword && dto.username ? chosenPassword : undefined;
+    const chosenPassword =
+      dto.initialPassword ??
+      (dto.username
+        ? `Tmp-${randomBytes(8).toString('base64url')}!`
+        : undefined);
+    const tempPassword =
+      !dto.initialPassword && dto.username ? chosenPassword : undefined;
     const user = await this.prisma.systemUser.create({
       data: {
         fullName: dto.fullName,
@@ -68,11 +75,10 @@ export class UserService {
         phone: dto.phone,
         roles: dto.roles,
         agencyId: dto.agencyId,
-        passwordHash: chosenPassword ? await bcrypt.hash(chosenPassword, 12) : null,
+        passwordHash: chosenPassword
+          ? await bcrypt.hash(chosenPassword, 12)
+          : null,
         mustChangePassword: !!tempPassword,
-        userZones: {
-          create: dto.zoneIds.map((zoneId) => ({ zoneId })),
-        },
         providerLinks: tempPassword
           ? undefined
           : {
@@ -130,6 +136,7 @@ export class UserService {
   }
 
   async updateAgency(id: string, agencyId: string, actor: JwtClaims) {
+    await this.assertManageable(id, actor);
     const target = await this.prisma.systemUser.findFirst({
       where: { id, deletedAt: null },
     });
@@ -144,42 +151,6 @@ export class UserService {
       where: { id },
       data: { agencyId },
       select: { id: true, fullName: true, agencyId: true, roles: true },
-    });
-  }
-
-  async updateZones(
-    id: string,
-    zoneIds: string[],
-    actor: JwtClaims,
-    scope?: RequestScope | null,
-  ) {
-    const target = await this.prisma.systemUser.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-        agencyId: actor.roles.includes('super_admin') ? undefined : actor.agencyId!,
-      },
-    });
-    if (!target) throw new NotFoundException();
-    if (
-      !isAdminTier(actor.roles) &&
-      zoneIds.some((zoneId) => !scope?.zoneIds.includes(zoneId))
-    ) {
-      throw new ForbiddenException();
-    }
-    await this.prisma.$transaction([
-      this.prisma.userZone.deleteMany({ where: { userId: id } }),
-      this.prisma.userZone.createMany({
-        data: zoneIds.map((zoneId) => ({ userId: id, zoneId })),
-      }),
-    ]);
-    return this.prisma.systemUser.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        fullName: true,
-        userZones: { include: { zone: true } },
-      },
     });
   }
 
