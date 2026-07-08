@@ -124,7 +124,7 @@ services:
         CMD ["node", "server.js"]
     restart: unless-stopped
     env_file:
-      - ../../Frontend/certificate-tracking/.env
+      - ../certificate-tracking/.env
     environment:
       NODE_ENV: production
       PORT: 3003
