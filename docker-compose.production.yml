@@ -69,7 +69,6 @@ services:
       APP_ORIGIN: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
       ADMIN_ORIGIN: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
       PUBLIC_API_BASE_URL: http://localhost:${PRODUCTION_BACKEND_PORT:-3001}/api
-      DGA_OIDC_MODE: mock
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: http://localhost:${PRODUCTION_MINIO_PORT:-9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-elicense}
@@ -132,7 +131,6 @@ services:
       BACKEND_INTERNAL_URL: http://backend:3001
       COOKIE_SECURE: "false"
       NEXT_PUBLIC_API_URL: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
-      NEXT_PUBLIC_DGA_REDIRECT_URI: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}/auth/login-callback
     ports:
       - "${PRODUCTION_FRONTEND_PORT:-3003}:3003"
     depends_on:

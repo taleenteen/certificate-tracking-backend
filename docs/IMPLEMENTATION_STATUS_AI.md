@@ -14,6 +14,14 @@
 
 ## 0. Change Log
 
+- **2026-07-08 (production DGA OIDC env passthrough)** — Fixed production
+  compose overriding real Tang Rat/DGA login settings. Removed
+  `DGA_OIDC_MODE: mock` from the backend service so backend `.env` controls
+  real vs mock mode, and removed the frontend localhost
+  `NEXT_PUBLIC_DGA_REDIRECT_URI` override so the frontend `.env` callback URL is
+  used. Root cause: deployed users received a real DGA authorization code, but
+  the backend container was forced into mock mode and rejected it as
+  `Invalid authorization code`.
 - **2026-07-08 (pg client query deprecation fix)** — Removed all Prisma array
   transaction calls (`$transaction([ ... ])`) from backend services and the
   Prisma seed reset, replacing them with interactive transactions that await
