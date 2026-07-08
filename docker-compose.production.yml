@@ -95,6 +95,10 @@ services:
   frontend:
     build:
       context: ../certificate-tracking
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_DGA_REDIRECT_URI: ${NEXT_PUBLIC_DGA_REDIRECT_URI:-}
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:?Set NEXT_PUBLIC_MAPBOX_TOKEN in frontend .env}
       dockerfile_inline: |
         FROM oven/bun:1 AS deps
         WORKDIR /app
@@ -103,6 +107,12 @@ services:
 
         FROM deps AS builder
         WORKDIR /app
+        ARG NEXT_PUBLIC_API_URL
+        ARG NEXT_PUBLIC_DGA_REDIRECT_URI
+        ARG NEXT_PUBLIC_MAPBOX_TOKEN
+        ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+        ENV NEXT_PUBLIC_DGA_REDIRECT_URI=$NEXT_PUBLIC_DGA_REDIRECT_URI
+        ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
         ENV NEXT_TELEMETRY_DISABLED=1
         COPY . .
         RUN bun run build

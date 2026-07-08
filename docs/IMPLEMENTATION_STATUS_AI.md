@@ -14,6 +14,12 @@
 
 ## 0. Change Log
 
+- **2026-07-08 (production Mapbox build env)** — Updated production compose to
+  pass frontend public env values into the Next.js Docker build. The e-map reads
+  `NEXT_PUBLIC_MAPBOX_TOKEN` in client code, so the token must be available
+  during `bun run build`, not only as a runtime container env. Production
+  frontend build now requires `NEXT_PUBLIC_MAPBOX_TOKEN` and also forwards
+  `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_DGA_REDIRECT_URI` as build args.
 - **2026-07-08 (production DGA OIDC env passthrough)** — Fixed production
   compose overriding real Tang Rat/DGA login settings. Removed
   `DGA_OIDC_MODE: mock` from the backend service so backend `.env` controls
