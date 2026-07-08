@@ -2,7 +2,7 @@
 set -eu
 
 COMPOSE_FILE="docker-compose.production.yml"
-FRONTEND_ENV="../../Frontend/certificate-tracking/.env"
+FRONTEND_ENV="../certificate-tracking/.env"
 
 if [ ! -f ".env" ]; then
   echo "Missing backend .env in $(pwd)" >&2
