@@ -12,9 +12,16 @@ echo "[entrypoint] Migrations applied."
 SEED_NEEDED=$(node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-pool.query('SELECT COUNT(*) AS n FROM system_users')
-  .then(r => { console.log(r.rows[0].n === '0' ? 'yes' : 'no'); pool.end(); })
-  .catch(() => { console.log('yes'); pool.end(); });
+(async () => {
+  try {
+    const result = await pool.query('SELECT COUNT(*) AS n FROM system_users');
+    console.log(result.rows[0].n === '0' ? 'yes' : 'no');
+  } catch {
+    console.log('yes');
+  } finally {
+    await pool.end();
+  }
+})();
 ")
 
 if [ "$SEED_NEEDED" = "yes" ]; then

@@ -52,32 +52,32 @@ const addDays = (days: number) => {
 };
 
 async function resetDatabase() {
-  await prisma.$transaction([
-    prisma.licenseDocument.deleteMany(),
-    prisma.officerInspectionEvidence.deleteMany(),
-    prisma.officerInspectionItem.deleteMany(),
-    prisma.officerPublicProfileScanLog.deleteMany(),
-    prisma.officerInspection.deleteMany(),
-    prisma.notification.deleteMany(),
-    prisma.auditLog.deleteMany(),
-    prisma.inspectionReport.deleteMany(),
-    prisma.inspectionTask.deleteMany(),
-    prisma.checklistTemplate.deleteMany(),
-    prisma.license.deleteMany(),
-    prisma.business.deleteMany(),
-    prisma.passwordResetToken.deleteMany(),
-    prisma.userSession.deleteMany(),
-    prisma.authProviderLink.deleteMany(),
-    prisma.syncLog.deleteMany(),
-    prisma.accountLinkChallenge.deleteMany(),
-    prisma.juristicJoinRequest.deleteMany(),
-    prisma.juristicInvite.deleteMany(),
-    prisma.juristicMember.deleteMany(),
-    prisma.systemUser.deleteMany(),
-    prisma.juristicPerson.deleteMany(),
-    prisma.licenseType.deleteMany(),
-    prisma.agency.deleteMany(),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.licenseDocument.deleteMany();
+    await tx.officerInspectionEvidence.deleteMany();
+    await tx.officerInspectionItem.deleteMany();
+    await tx.officerPublicProfileScanLog.deleteMany();
+    await tx.officerInspection.deleteMany();
+    await tx.notification.deleteMany();
+    await tx.auditLog.deleteMany();
+    await tx.inspectionReport.deleteMany();
+    await tx.inspectionTask.deleteMany();
+    await tx.checklistTemplate.deleteMany();
+    await tx.license.deleteMany();
+    await tx.business.deleteMany();
+    await tx.passwordResetToken.deleteMany();
+    await tx.userSession.deleteMany();
+    await tx.authProviderLink.deleteMany();
+    await tx.syncLog.deleteMany();
+    await tx.accountLinkChallenge.deleteMany();
+    await tx.juristicJoinRequest.deleteMany();
+    await tx.juristicInvite.deleteMany();
+    await tx.juristicMember.deleteMany();
+    await tx.systemUser.deleteMany();
+    await tx.juristicPerson.deleteMany();
+    await tx.licenseType.deleteMany();
+    await tx.agency.deleteMany();
+  });
 }
 
 async function main() {
@@ -85,8 +85,13 @@ async function main() {
   // production UNLESS explicitly opted in with ALLOW_SEED=true. The Docker
   // entrypoint additionally only runs the seed when system_users is empty,
   // so this combination only ever seeds a truly fresh database.
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED !== 'true') {
-    throw new Error('Refusing to seed production (set ALLOW_SEED=true to override)');
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.ALLOW_SEED !== 'true'
+  ) {
+    throw new Error(
+      'Refusing to seed production (set ALLOW_SEED=true to override)',
+    );
   }
 
   await resetDatabase();
@@ -529,7 +534,9 @@ async function main() {
           expireDate,
           suspendedAt: status === LicenseStatus.SUSPENDED ? addDays(-5) : null,
           suspensionReason:
-            status === LicenseStatus.SUSPENDED ? 'ระงับชั่วคราวเพื่อทดสอบระบบ' : null,
+            status === LicenseStatus.SUSPENDED
+              ? 'ระงับชั่วคราวเพื่อทดสอบระบบ'
+              : null,
         },
       }),
     );
@@ -631,10 +638,7 @@ async function main() {
   for (let index = 3; index < tasks.length; index += 1) {
     const submitted = tasks[index].status !== TaskStatus.IN_PROGRESS;
     const reviewed = (
-      [
-        TaskStatus.APPROVED,
-        TaskStatus.RETURNED,
-      ] as TaskStatus[]
+      [TaskStatus.APPROVED, TaskStatus.RETURNED] as TaskStatus[]
     ).includes(tasks[index].status);
     await prisma.inspectionReport.create({
       data: {

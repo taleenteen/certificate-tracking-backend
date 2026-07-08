@@ -34,6 +34,7 @@ import { JwtClaims } from '../../common/auth.types';
 import {
   CreateOfficerInspectionDto,
   OfficerInspectionExportQueryDto,
+  OfficerInspectionListQueryDto,
   OfficerInspectionLogQueryDto,
   OfficerLicenseQueryDto,
 } from './officer.dto';
@@ -79,6 +80,53 @@ export class OfficerController {
     @CurrentUser() user: JwtClaims,
   ) {
     return this.officers.createInspection(dto, user);
+  }
+
+  @Roles('officer')
+  @ApiOperation({
+    summary: 'List own officer inspection reports',
+    description:
+      'Returns the logged-in officer inspection history. Admin/super_admin ' +
+      'should use the admin log endpoint for cross-officer review.',
+  })
+  @ApiOkResponse({ description: 'Paginated officer inspection reports.' })
+  @Get('officer/inspections')
+  listInspections(
+    @Query() query: OfficerInspectionListQueryDto,
+    @CurrentUser() user: JwtClaims,
+  ) {
+    return this.officers.listInspections(query, user);
+  }
+
+  @Roles('officer')
+  @ApiOperation({
+    summary: 'Upload temporary evidence for officer inspection batch',
+    description:
+      'Multipart upload. Max 10 MB; allowed types: image/jpeg, image/png, ' +
+      'application/pdf. Uploads to temporary storage and returns metadata ' +
+      'to be included in the batch creation JSON.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiCreatedResponse({ description: 'Temporary uploaded file metadata.' })
+  @ApiUnprocessableEntityResponse({
+    description: 'Invalid file or limit exceeded.',
+  })
+  @Post('officer/inspections/upload')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  uploadTempEvidence(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: JwtClaims,
+  ) {
+    return this.officers.uploadTempEvidence(file, user);
   }
 
   @Roles('officer')

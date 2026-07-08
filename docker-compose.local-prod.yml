@@ -1,22 +1,14 @@
-# Prototype production stack.
-#
-# This is intentionally the same shape as the verified local production-like
-# stack, but named for prototype production/demo deployment. It uses the current
-# backend `.env` and frontend `../../Frontend/certificate-tracking/.env`; no
-# `.env.app` or `.env.local` is required.
+# Local production-like stack for proving Docker builds, migrations, seed data,
+# MinIO uploads, and the Next.js BFF flow on one machine.
 #
 # Run from this backend directory:
-#   sh scripts/production-stack.sh up
+#   sh scripts/local-prod-stack.sh up
 #
-# Notes:
-# - This is for prototype demos, not hardened public production.
-# - Backend runtime uses NODE_ENV=development so seed data can run and HTTP
-#   cookies work without HTTPS.
-# - Docker images are still production builds.
-# - Seed runs only when `system_users` is empty. Existing data is not wiped
-#   unless you run `sh scripts/production-stack.sh reset`.
+# This uses the existing backend `.env` and frontend `../../Frontend/certificate-tracking/.env`.
+# It intentionally runs the backend with NODE_ENV=development so seed data and
+# HTTP cookies work on localhost, while still building production Docker images.
 
-name: certificate-tracking-production
+name: certificate-tracking-local-prod
 
 services:
   db:
@@ -27,14 +19,14 @@ services:
       POSTGRES_USER: elicense
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in backend .env}
     ports:
-      - "${PRODUCTION_DB_PORT:-5432}:5432"
+      - "${LOCAL_DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U elicense -d elicense"]
       interval: 5s
       timeout: 5s
       retries: 20
     volumes:
-      - production_pgdata:/var/lib/postgresql/data
+      - local_prod_pgdata:/var/lib/postgresql/data
 
   minio:
     image: minio/minio:latest
@@ -44,15 +36,15 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-elicense}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in backend .env}
     ports:
-      - "${PRODUCTION_MINIO_PORT:-9000}:9000"
-      - "${PRODUCTION_MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${LOCAL_MINIO_PORT:-9000}:9000"
+      - "${LOCAL_MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 20
     volumes:
-      - production_minio_data:/data
+      - local_prod_minio_data:/data
 
   backend:
     build:
@@ -66,17 +58,17 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://elicense:${DB_PASSWORD:?Set DB_PASSWORD in backend .env}@db:5432/elicense?schema=public
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in backend .env}
-      APP_ORIGIN: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
-      ADMIN_ORIGIN: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
-      PUBLIC_API_BASE_URL: http://localhost:${PRODUCTION_BACKEND_PORT:-3001}/api
+      APP_ORIGIN: http://localhost:${LOCAL_FRONTEND_PORT:-3003}
+      ADMIN_ORIGIN: http://localhost:${LOCAL_FRONTEND_PORT:-3003}
+      PUBLIC_API_BASE_URL: http://localhost:${LOCAL_BACKEND_PORT:-3001}/api
       DGA_OIDC_MODE: mock
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_PUBLIC_ENDPOINT: http://localhost:${PRODUCTION_MINIO_PORT:-9000}
+      MINIO_PUBLIC_ENDPOINT: http://localhost:${LOCAL_MINIO_PORT:-9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-elicense}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in backend .env}
       TOTP_BYPASS: "true"
     ports:
-      - "${PRODUCTION_BACKEND_PORT:-3001}:3001"
+      - "${LOCAL_BACKEND_PORT:-3001}:3001"
     depends_on:
       db:
         condition: service_healthy
@@ -86,7 +78,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'node -e "fetch(''http://127.0.0.1:3001/docs-json'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+          "node -e \"fetch('http://127.0.0.1:3001/docs-json').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
       interval: 15s
       timeout: 5s
@@ -95,7 +87,7 @@ services:
 
   frontend:
     build:
-      context: ../certificate-tracking
+      context: ../../Frontend/certificate-tracking
       dockerfile_inline: |
         FROM oven/bun:1 AS deps
         WORKDIR /app
@@ -131,10 +123,10 @@ services:
       HOSTNAME: 0.0.0.0
       BACKEND_INTERNAL_URL: http://backend:3001
       COOKIE_SECURE: "false"
-      NEXT_PUBLIC_API_URL: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
-      NEXT_PUBLIC_DGA_REDIRECT_URI: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}/auth/login-callback
+      NEXT_PUBLIC_API_URL: http://localhost:${LOCAL_FRONTEND_PORT:-3003}
+      NEXT_PUBLIC_DGA_REDIRECT_URI: http://localhost:${LOCAL_FRONTEND_PORT:-3003}/auth/login-callback
     ports:
-      - "${PRODUCTION_FRONTEND_PORT:-3003}:3003"
+      - "${LOCAL_FRONTEND_PORT:-3003}:3003"
     depends_on:
       backend:
         condition: service_healthy
@@ -142,7 +134,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'node -e "fetch(''http://127.0.0.1:3003'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+          "node -e \"fetch('http://127.0.0.1:3003').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
       interval: 15s
       timeout: 5s
@@ -150,5 +142,5 @@ services:
       start_period: 45s
 
 volumes:
-  production_pgdata: {}
-  production_minio_data: {}
+  local_prod_pgdata: {}
+  local_prod_minio_data: {}

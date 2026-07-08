@@ -167,7 +167,59 @@ Response:
 }
 ```
 
-## 4. Get Inspection Detail
+## 4. List Own Inspection Reports
+
+```http
+GET /api/officer/inspections?q=&businessId=&licenseId=&dateFrom=&dateTo=&page=1&limit=20
+Authorization: Bearer <accessToken>
+```
+
+Access:
+
+- The officer list is scoped to the logged-in officer.
+- Use `/api/admin/officer-inspection-logs` for admin/super_admin review across
+  officers.
+- Plain `YYYY-MM-DD` date filters are inclusive for the whole day.
+
+Response uses the same item shape as admin logs:
+
+```json
+{
+  "data": [
+    {
+      "inspectionId": "inspection-id",
+      "inspectionNo": "IR-2026-000001",
+      "officer": {
+        "id": "officer-id",
+        "fullName": "เจ้าหน้าที่ตัวอย่าง",
+        "agency": "DIW"
+      },
+      "business": {
+        "id": "business-id",
+        "nameTh": "โรงงานตัวอย่าง",
+        "province": "กรุงเทพมหานคร"
+      },
+      "juristic": {
+        "id": "juristic-id",
+        "nameTh": "บริษัท ตัวอย่าง จำกัด"
+      },
+      "itemCount": 2,
+      "status": "SUBMITTED",
+      "inspectedAt": "2026-07-01T09:00:00.000Z",
+      "submittedAt": "2026-07-01T09:05:00.000Z"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "total": 1 }
+}
+```
+
+Recommended query key:
+
+```ts
+['officer-inspections', filters]
+```
+
+## 5. Get Inspection Detail
 
 ```http
 GET /api/officer/inspections/:id
@@ -195,7 +247,7 @@ Recommended query key:
 ['officer-inspection', inspectionId]
 ```
 
-## 5. Export Inspection
+## 6. Export Inspection
 
 ```http
 GET /api/officer/inspections/:id/export?format=pdf
@@ -214,7 +266,7 @@ Behavior:
 - Backend records `EXPORT | officer-inspections` into `AuditLog`.
 - Export uses stored report snapshots so later license changes do not rewrite the report history.
 
-## 6. Admin Officer Inspection Logs
+## 7. Admin Officer Inspection Logs
 
 ```http
 GET /api/admin/officer-inspection-logs?officerId=&businessId=&licenseId=&dateFrom=&dateTo=&page=1&limit=20

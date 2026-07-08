@@ -27,8 +27,8 @@ export class AuditService {
             agencyId: user.agencyId!,
           },
     };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.auditLog.findMany({
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.auditLog.findMany({
         where,
         include: {
           user: {
@@ -38,9 +38,10 @@ export class AuditService {
         orderBy: { createdAt: 'desc' },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-      }),
-      this.prisma.auditLog.count({ where }),
-    ]);
+      });
+      const total = await tx.auditLog.count({ where });
+      return [data, total] as const;
+    });
     return {
       data,
       meta: { page: query.page, limit: query.limit, total },

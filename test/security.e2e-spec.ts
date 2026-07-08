@@ -99,6 +99,7 @@ describe('Security integration tests', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
+    process.env.TOTP_BYPASS = 'true';
     app = await bootstrap();
   }, 30_000);
 
@@ -112,7 +113,7 @@ describe('Security integration tests', () => {
     it('revokes all sessions when a rotated refresh token is replayed', async () => {
       const { accessToken, refreshToken } = await tangRatLogin(
         app,
-        'mock-inspector-1',
+        'mock-officer-1',
       );
 
       // Perform a normal rotation — this marks the original token ROTATED and
@@ -153,10 +154,10 @@ describe('Security integration tests', () => {
 
   describe('Scope isolation — agency', () => {
     it('officer cannot fetch an out-of-agency task', async () => {
-      // inspector-1 is DIW; their own task list scopes to assignedTo = self.
+      // officer-1 is DIW; their own task list scopes to assignedTo = self.
       const { accessToken: inspector1Token } = await tangRatLogin(
         app,
-        'mock-inspector-1',
+        'mock-officer-1',
       );
       const ownRes = await request(app.getHttpServer())
         .get('/api/inspection-tasks')
@@ -170,7 +171,7 @@ describe('Security integration tests', () => {
       // assigned to inspector-1. Use one as the out-of-scope target.
       const { accessToken: supAcfsToken } = await tangRatLogin(
         app,
-        'mock-supervisor-acfs',
+        'mock-officer-acfs',
       );
       const acfsRes = await request(app.getHttpServer())
         .get('/api/inspection-tasks')
@@ -212,11 +213,11 @@ describe('Security integration tests', () => {
     it('ACFS officer cannot see DIW tasks in their agency list', async () => {
       const { accessToken: supAcfsToken } = await tangRatLogin(
         app,
-        'mock-supervisor-acfs',
+        'mock-officer-acfs',
       );
       const { accessToken: supDiwToken } = await tangRatLogin(
         app,
-        'mock-supervisor-diw',
+        'mock-officer-diw',
       );
 
       const acfsTasks = await request(app.getHttpServer())
@@ -246,7 +247,7 @@ describe('Security integration tests', () => {
     it('returns 409 when assigning a task to the business owner', async () => {
       const { accessToken: supDiwToken } = await tangRatLogin(
         app,
-        'mock-supervisor-diw',
+        'mock-officer-diw',
       );
 
       // Look up the public-owner user ID and their owned business ID.
@@ -337,7 +338,7 @@ describe('Security integration tests', () => {
 
   describe('Upload restrictions', () => {
     it('rejects a non-whitelisted MIME type', async () => {
-      const { accessToken } = await tangRatLogin(app, 'mock-inspector-1');
+      const { accessToken } = await tangRatLogin(app, 'mock-officer-1');
 
       // We need a report ID — use the inspector's task list to find one they own.
       const tasksRes = await request(app.getHttpServer())
@@ -345,12 +346,18 @@ describe('Security integration tests', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
+      const decoded = JSON.parse(
+        Buffer.from(accessToken.split('.')[1], 'base64').toString(),
+      ) as { sub: string };
+      const userId = decoded.sub;
       const tasks = tasksRes.body as Array<{
         id: string;
         status: string;
-        reports: Array<{ id: string }>;
+        reports: Array<{ id: string; inspectorId: string }>;
       }>;
-      const taskWithReport = tasks.find((t) => t.reports?.length);
+      const taskWithReport = tasks.find(
+        (t) => t.reports?.length && t.reports[0].inspectorId === userId,
+      );
       if (!taskWithReport) {
         console.warn(
           'No tasks with reports for inspector-1 — skipping upload sub-test',
@@ -372,17 +379,23 @@ describe('Security integration tests', () => {
     });
 
     it('rejects a file exceeding 10 MB', async () => {
-      const { accessToken } = await tangRatLogin(app, 'mock-inspector-1');
+      const { accessToken } = await tangRatLogin(app, 'mock-officer-1');
 
       const tasksRes = await request(app.getHttpServer())
         .get('/api/inspection-tasks')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
+      const decoded = JSON.parse(
+        Buffer.from(accessToken.split('.')[1], 'base64').toString(),
+      ) as { sub: string };
+      const userId = decoded.sub;
       const tasks = tasksRes.body as Array<{
         id: string;
-        reports: Array<{ id: string }>;
+        reports: Array<{ id: string; inspectorId: string }>;
       }>;
-      const taskWithReport = tasks.find((t) => t.reports?.length);
+      const taskWithReport = tasks.find(
+        (t) => t.reports?.length && t.reports[0].inspectorId === userId,
+      );
       if (!taskWithReport) {
         console.warn(
           'No tasks with reports for inspector-1 — skipping size sub-test',

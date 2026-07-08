@@ -612,16 +612,16 @@ export class AuthService {
           });
         }
       }
-      await this.prisma.$transaction([
-        this.prisma.authProviderLink.update({
+      await this.prisma.$transaction(async (tx) => {
+        await tx.authProviderLink.update({
           where: { id: link.id },
           data: { lastLoginAt: new Date(), verifiedAt: new Date() },
-        }),
-        this.prisma.systemUser.update({
+        });
+        await tx.systemUser.update({
           where: { id: link.user.id },
           data: { lastLoginAt: new Date() },
-        }),
-      ]);
+        });
+      });
       const result = await this.createSession(
         link.user,
         AuthProvider.tang_rat,
@@ -905,8 +905,8 @@ export class AuthService {
     if (user.authProvider !== AuthProvider.self) {
       throw new ForbiddenException();
     }
-    await this.prisma.$transaction([
-      this.prisma.systemUser.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.systemUser.update({
         where: { id: user.sub },
         data: {
           passwordHash: await bcrypt.hash(newPassword, 12),
@@ -914,8 +914,8 @@ export class AuthService {
           failedLoginCount: 0,
           lockedUntil: null,
         },
-      }),
-      this.prisma.userSession.updateMany({
+      });
+      await tx.userSession.updateMany({
         where: {
           userId: user.sub,
           accessTokenJti: { not: user.jti },
@@ -926,8 +926,8 @@ export class AuthService {
           revokedAt: new Date(),
           revokeReason: 'FORCED',
         },
-      }),
-    ]);
+      });
+    });
     return { success: true };
   }
 
@@ -964,27 +964,27 @@ export class AuthService {
     if (!record || record.usedAt || record.expiresAt < new Date()) {
       throw new NotFoundException('Reset token not found or expired');
     }
-    await this.prisma.$transaction([
-      this.prisma.passwordResetToken.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.passwordResetToken.update({
         where: { id: record.id },
         data: { usedAt: new Date() },
-      }),
-      this.prisma.systemUser.update({
+      });
+      await tx.systemUser.update({
         where: { id: record.userId },
         data: {
           passwordHash: await bcrypt.hash(newPassword, 12),
           mustChangePassword: false,
         },
-      }),
-      this.prisma.userSession.updateMany({
+      });
+      await tx.userSession.updateMany({
         where: { userId: record.userId, isRevoked: false },
         data: {
           isRevoked: true,
           revokedAt: new Date(),
           revokeReason: 'FORCED',
         },
-      }),
-    ]);
+      });
+    });
     return { success: true };
   }
 

@@ -170,41 +170,43 @@ export class UserService {
 
   async suspend(id: string, actor: JwtClaims) {
     await this.assertManageable(id, actor);
-    const [user] = await this.prisma.$transaction([
-      this.prisma.systemUser.update({
+    const user = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.systemUser.update({
         where: { id },
         data: { isActive: false },
         select: { id: true, fullName: true, isActive: true },
-      }),
-      this.prisma.userSession.updateMany({
+      });
+      await tx.userSession.updateMany({
         where: { userId: id, isRevoked: false },
         data: {
           isRevoked: true,
           revokedAt: new Date(),
           revokeReason: 'FORCED',
         },
-      }),
-    ]);
+      });
+      return user;
+    });
     return user;
   }
 
   async remove(id: string, actor: JwtClaims) {
     await this.assertManageable(id, actor);
-    const [user] = await this.prisma.$transaction([
-      this.prisma.systemUser.update({
+    const user = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.systemUser.update({
         where: { id },
         data: { deletedAt: new Date(), isActive: false },
         select: { id: true, fullName: true, deletedAt: true },
-      }),
-      this.prisma.userSession.updateMany({
+      });
+      await tx.userSession.updateMany({
         where: { userId: id, isRevoked: false },
         data: {
           isRevoked: true,
           revokedAt: new Date(),
           revokeReason: 'FORCED',
         },
-      }),
-    ]);
+      });
+      return user;
+    });
     return user;
   }
 }

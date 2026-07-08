@@ -20,7 +20,8 @@ import {
   randomBytes,
   randomUUID,
 } from 'crypto';
-import { extname } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { extname, resolve } from 'path';
 import { JwtClaims } from '../../common/auth.types';
 import { isAdminTier } from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,6 +29,7 @@ import { StorageService } from '../storage/storage.service';
 import {
   CreateOfficerInspectionDto,
   OfficerInspectionExportQueryDto,
+  OfficerInspectionListQueryDto,
   OfficerInspectionLogQueryDto,
   OfficerLicenseQueryDto,
 } from './officer.dto';
@@ -40,6 +42,25 @@ interface ExportFile {
 
 const OFFICER_QR_TOKEN_TTL_MS = 60_000;
 const OFFICER_QR_TOKEN_TTL_SECONDS = OFFICER_QR_TOKEN_TTL_MS / 1000;
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FONT_MAGIC_HEADERS = ['00010000', '4f54544f', '74746366', '74727565'];
+
+const officerInspectionListInclude = {
+  officer: {
+    select: {
+      id: true,
+      fullName: true,
+      agency: { select: { code: true, nameTh: true } },
+    },
+  },
+  business: { select: { id: true, nameTh: true, province: true } },
+  juristicPerson: { select: { id: true, nameTh: true } },
+  items: { select: { id: true } },
+} satisfies Prisma.OfficerInspectionInclude;
+
+type OfficerInspectionListRow = Prisma.OfficerInspectionGetPayload<{
+  include: typeof officerInspectionListInclude;
+}>;
 
 @Injectable()
 export class OfficerService {
@@ -65,8 +86,8 @@ export class OfficerService {
         : undefined,
       licenseType: query.agencyId ? { agencyId: query.agencyId } : undefined,
     };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.license.findMany({
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.license.findMany({
         where,
         include: {
           licenseType: {
@@ -85,9 +106,10 @@ export class OfficerService {
         orderBy: { updatedAt: 'desc' },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-      }),
-      this.prisma.license.count({ where }),
-    ]);
+      });
+      const total = await tx.license.count({ where });
+      return [data, total] as const;
+    });
     return {
       data: data.map((license) => ({
         id: license.id,
@@ -170,7 +192,9 @@ export class OfficerService {
     const licenseById = new Map(
       licenses.map((license) => [license.id, license]),
     );
-    const inspectedAt = new Date(dto.inspectedAt);
+    const inspectedAt = dto.inspectedAt
+      ? new Date(dto.inspectedAt)
+      : new Date();
     const prefix = `IR-${new Date().getFullYear()}-`;
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
@@ -205,6 +229,17 @@ export class OfficerService {
                   licenseSnapshot: this.licenseSnapshot(
                     licenseById.get(item.licenseId)!,
                   ),
+                  evidence: item.pictures?.length
+                    ? {
+                        create: item.pictures.map((pic) => ({
+                          fileName: pic.fileName,
+                          objectKey: pic.objectKey,
+                          mimeType: pic.mimeType,
+                          fileSizeBytes: pic.fileSizeBytes,
+                          uploadedBy: officer.id,
+                        })),
+                      }
+                    : undefined,
                 })),
               },
             },
@@ -282,9 +317,74 @@ export class OfficerService {
     };
   }
 
+  async uploadTempEvidence(file: Express.Multer.File, user: JwtClaims) {
+    this.requireOfficerAgency(user);
+    if (!user.roles.includes('officer')) {
+      throw new ForbiddenException('Officer role is required');
+    }
+    if (!file) throw new UnprocessableEntityException('Evidence file required');
+    const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (!allowed.includes(file.mimetype) || file.size > 10 * 1024 * 1024) {
+      throw new UnprocessableEntityException('Invalid evidence file');
+    }
+    const suffix = extname(file.originalname).toLowerCase();
+    const objectKey = `officer-inspections/temp/${randomUUID()}${suffix}`;
+    await this.storage.upload(objectKey, file.buffer, file.mimetype);
+    return {
+      fileName: file.originalname,
+      objectKey,
+      mimeType: file.mimetype,
+      fileSizeBytes: file.size,
+      url: await this.storage.presign(objectKey),
+    };
+  }
+
   async findInspection(id: string, user: JwtClaims) {
     const inspection = await this.findInspectionForAccess(id, user);
     return this.toInspectionDetail(inspection);
+  }
+
+  async listInspections(query: OfficerInspectionListQueryDto, user: JwtClaims) {
+    const where: Prisma.OfficerInspectionWhereInput = {
+      officerId: user.sub,
+      businessId: query.businessId,
+      deletedAt: null,
+      inspectedAt: this.dateRange(query.dateFrom, query.dateTo),
+      OR: query.q
+        ? [
+            { inspectionNo: { contains: query.q, mode: 'insensitive' } },
+            {
+              business: {
+                nameTh: { contains: query.q, mode: 'insensitive' },
+              },
+            },
+            {
+              officer: {
+                fullName: { contains: query.q, mode: 'insensitive' },
+              },
+            },
+          ]
+        : undefined,
+      items: query.licenseId
+        ? {
+            some: {
+              licenseId: query.licenseId,
+            },
+          }
+        : undefined,
+    };
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.officerInspection.findMany({
+        where,
+        include: officerInspectionListInclude,
+        orderBy: { submittedAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      });
+      const total = await tx.officerInspection.count({ where });
+      return [data, total] as const;
+    });
+    return this.toInspectionListPage(data, total, query.page, query.limit);
   }
 
   async exportInspection(
@@ -301,8 +401,8 @@ export class OfficerService {
         : await this.exportPdf(inspection);
     const objectKey = `officer-inspections/${id}/exports/${inspection.inspectionNo}.${query.format}`;
     await this.storage.upload(objectKey, file.buffer, file.contentType);
-    await this.prisma.$transaction([
-      this.prisma.officerInspection.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.officerInspection.update({
         where: { id },
         data: {
           status: OfficerInspectionStatus.EXPORTED,
@@ -310,8 +410,8 @@ export class OfficerService {
           pdfObjectKey: query.format === 'pdf' ? objectKey : undefined,
           xlsxObjectKey: query.format === 'xlsx' ? objectKey : undefined,
         },
-      }),
-      this.prisma.auditLog.create({
+      });
+      await tx.auditLog.create({
         data: {
           userId: user.sub,
           action: 'EXPORT',
@@ -325,8 +425,8 @@ export class OfficerService {
           ipAddress,
           userAgent,
         },
-      }),
-    ]);
+      });
+    });
     return file;
   }
 
@@ -335,13 +435,7 @@ export class OfficerService {
       officerId: query.officerId,
       businessId: query.businessId,
       deletedAt: null,
-      inspectedAt:
-        query.dateFrom || query.dateTo
-          ? {
-              gte: query.dateFrom ? new Date(query.dateFrom) : undefined,
-              lte: query.dateTo ? new Date(query.dateTo) : undefined,
-            }
-          : undefined,
+      inspectedAt: this.dateRange(query.dateFrom, query.dateTo),
       items: query.licenseId
         ? {
             some: {
@@ -350,45 +444,18 @@ export class OfficerService {
           }
         : undefined,
     };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.officerInspection.findMany({
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.officerInspection.findMany({
         where,
-        include: {
-          officer: {
-            select: {
-              id: true,
-              fullName: true,
-              agency: { select: { code: true, nameTh: true } },
-            },
-          },
-          business: { select: { id: true, nameTh: true, province: true } },
-          juristicPerson: { select: { id: true, nameTh: true } },
-          items: { select: { id: true } },
-        },
+        include: officerInspectionListInclude,
         orderBy: { inspectedAt: 'desc' },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-      }),
-      this.prisma.officerInspection.count({ where }),
-    ]);
-    return {
-      data: data.map((inspection) => ({
-        inspectionId: inspection.id,
-        inspectionNo: inspection.inspectionNo,
-        officer: {
-          id: inspection.officer.id,
-          fullName: inspection.officer.fullName,
-          agency: inspection.officer.agency?.code ?? null,
-        },
-        business: inspection.business,
-        juristic: inspection.juristicPerson,
-        itemCount: inspection.items.length,
-        status: inspection.status,
-        inspectedAt: inspection.inspectedAt.toISOString(),
-        submittedAt: inspection.submittedAt.toISOString(),
-      })),
-      meta: { page: query.page, limit: query.limit, total },
-    };
+      });
+      const total = await tx.officerInspection.count({ where });
+      return [data, total] as const;
+    });
+    return this.toInspectionListPage(data, total, query.page, query.limit);
   }
 
   async getQrProfile(id: string, user: JwtClaims) {
@@ -634,6 +701,32 @@ export class OfficerService {
     };
   }
 
+  private toInspectionListPage(
+    data: OfficerInspectionListRow[],
+    total: number,
+    page: number,
+    limit: number,
+  ) {
+    return {
+      data: data.map((inspection) => ({
+        inspectionId: inspection.id,
+        inspectionNo: inspection.inspectionNo,
+        officer: {
+          id: inspection.officer.id,
+          fullName: inspection.officer.fullName,
+          agency: inspection.officer.agency?.code ?? null,
+        },
+        business: inspection.business,
+        juristic: inspection.juristicPerson,
+        itemCount: inspection.items.length,
+        status: inspection.status,
+        inspectedAt: inspection.inspectedAt.toISOString(),
+        submittedAt: inspection.submittedAt.toISOString(),
+      })),
+      meta: { page, limit, total },
+    };
+  }
+
   private exportXlsx(
     inspection: Awaited<ReturnType<OfficerService['findInspectionForAccess']>>,
   ): ExportFile {
@@ -665,35 +758,213 @@ export class OfficerService {
     };
   }
 
-  private exportPdf(
+  private async exportPdf(
     inspection: Awaited<ReturnType<OfficerService['findInspectionForAccess']>>,
   ): Promise<ExportFile> {
-    return new Promise((resolve) => {
-      const document = new PDFDocument({ margin: 40 });
-      const chunks: Buffer[] = [];
-      document.on('data', (chunk: Buffer) => chunks.push(chunk));
-      document.on('end', () =>
-        resolve({
-          buffer: Buffer.concat(chunks),
-          fileName: `${inspection.inspectionNo}.pdf`,
-          contentType: 'application/pdf',
-        }),
-      );
-      document.text(`Inspection No: ${inspection.inspectionNo}`);
-      document.text(`Officer: ${inspection.officer.fullName}`);
-      document.text(`Agency: ${inspection.agency.code}`);
-      document.text(`Business: ${inspection.business.nameTh}`);
-      document.text(`Inspected At: ${inspection.inspectedAt.toISOString()}`);
-      document.moveDown();
-      inspection.items.forEach((item) => {
-        document.text(`License: ${item.license.licenseNo}`);
-        document.text(`Type: ${item.license.licenseType.code}`);
-        document.text(`Detail: ${item.detailNote ?? ''}`);
-        document.text(`Evidence: ${item.evidence.length}`);
-        document.moveDown();
-      });
-      document.end();
+    const document = new PDFDocument({
+      margin: 40,
+      size: 'A4',
+      info: {
+        Title: `Officer Inspection Report ${inspection.inspectionNo}`,
+        Subject: 'Officer field inspection report',
+      },
     });
+
+    const chunks: Buffer[] = [];
+    document.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    const pdfPromise = new Promise<Buffer>((resolve) => {
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+
+    const fonts = this.pdfFontPaths();
+    const regularFont = fonts ? 'NotoSansThai' : 'Helvetica';
+    const boldFont = fonts ? 'NotoSansThai-Bold' : 'Helvetica-Bold';
+    if (fonts) {
+      document.registerFont(regularFont, fonts.regular);
+      document.registerFont(boldFont, fonts.bold);
+    }
+
+    // Helper to format date
+    const formatThaiDate = (
+      date: Date,
+    ): { dateStr: string; timeStr: string } => {
+      const months = [
+        'มกราคม',
+        'กุมภาพันธ์',
+        'มีนาคม',
+        'เมษายน',
+        'พฤษภาคม',
+        'มิถุนายน',
+        'กรกฎาคม',
+        'สิงหาคม',
+        'กันยายน',
+        'ตุลาคม',
+        'พฤศจิกายน',
+        'ธันวาคม',
+      ];
+      const day = date.getDate();
+      const month = months[date.getMonth()];
+      const year = date.getFullYear() + 543;
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return {
+        dateStr: `${day} ${month} ${year}`,
+        timeStr: `${hours}:${minutes} น.`,
+      };
+    };
+
+    // Page 1 Layout
+    document
+      .font(boldFont)
+      .fontSize(18)
+      .fillColor('#000000')
+      .text('รายงานผลการตรวจสอบใบอนุญาต', {
+        align: 'center',
+      });
+    document.moveDown(0.2);
+
+    const { dateStr, timeStr } = formatThaiDate(
+      inspection.submittedAt || inspection.createdAt,
+    );
+    document.font(regularFont).fontSize(9).fillColor('#4a5568');
+    document.text(`วันที่ออกรายงาน: ${dateStr}`, { align: 'right' });
+    document.text(`เวลาออกรายงาน: ${timeStr}`, { align: 'right' });
+    document.moveDown(1);
+
+    document.font(regularFont).fontSize(10).fillColor('#2d3748');
+    document.text(`เจ้าหน้าที่: ${inspection.officer.fullName}`);
+    document.text(`เลขที่รายงาน: ${inspection.inspectionNo}`);
+    document.text(
+      `หน่วยงาน: ${inspection.agency.nameTh} (${inspection.agency.code})`,
+    );
+    document.text(`แหล่งที่มาของข้อมูล: E-License Verification Platform`);
+    document.moveDown(0.8);
+
+    // Line 1
+    document
+      .moveTo(40, document.y)
+      .lineTo(555, document.y)
+      .strokeColor('#e2e8f0')
+      .lineWidth(1)
+      .stroke();
+    document.moveDown(0.8);
+
+    // Business Info
+    document
+      .font(boldFont)
+      .fontSize(12)
+      .fillColor('#1a202c')
+      .text('ข้อมูลสถานประกอบการ');
+    document.moveDown(0.4);
+    document.font(regularFont).fontSize(10).fillColor('#2d3748');
+    document.text(`ชื่อสถานประกอบการ: ${inspection.business.nameTh}`);
+    document.text(`ที่ตั้ง: ${inspection.business.address}`);
+    document.text(`เบอร์ติดต่อ: ${inspection.business.phone || '-'}`);
+    document.text(`ประเภทธุรกิจ: โรงงาน`);
+    document.moveDown(0.8);
+
+    // Line 2
+    document
+      .moveTo(40, document.y)
+      .lineTo(555, document.y)
+      .strokeColor('#e2e8f0')
+      .lineWidth(1)
+      .stroke();
+    document.moveDown(0.8);
+
+    // Inspection Results
+    document
+      .font(boldFont)
+      .fontSize(12)
+      .fillColor('#1a202c')
+      .text('ผลการตรวจสอบ');
+    document.moveDown(0.4);
+
+    for (const item of inspection.items) {
+      document.font(regularFont).fontSize(10).fillColor('#2d3748');
+      document.text(`ชื่อใบอนุญาต: ${item.license.licenseType.nameTh}`);
+      document.text(`เลขที่ใบอนุญาต: ${item.license.licenseNo}`);
+
+      let statusTh = item.license.status as string;
+      if (statusTh === 'ACTIVE') statusTh = 'ใช้งานอยู่';
+      else if (statusTh === 'SUSPENDED') statusTh = 'ระงับการใช้งาน';
+      else if (statusTh === 'EXPIRED') statusTh = 'หมดอายุ';
+      else if (statusTh === 'REVOKED') statusTh = 'เพิกถอน';
+
+      document.text(`สถานะใบอนุญาต: ${statusTh}`);
+      document.text(
+        `หน่วยงานเจ้าของข้อมูล: ${item.license.licenseType.agency.nameTh}`,
+      );
+      document.moveDown(0.4);
+
+      document
+        .font(boldFont)
+        .fontSize(10.5)
+        .fillColor('#1a202c')
+        .text('รายละเอียดการตรวจสอบ');
+      document
+        .font(regularFont)
+        .fontSize(10)
+        .fillColor('#4a5568')
+        .text(item.detailNote || '-', {
+          width: 515,
+          align: 'justify',
+          lineGap: 3,
+        });
+      document.moveDown(1);
+    }
+
+    // Page 2 - Pictures Zone
+    const hasImages = inspection.items.some((item) => item.evidence.length > 0);
+    if (hasImages) {
+      document.addPage();
+      document
+        .font(boldFont)
+        .fontSize(14)
+        .fillColor('#1a202c')
+        .text('รูปประกอบ');
+      document.moveDown(1);
+
+      const imgX = 40;
+      let imgY = 100;
+      let col = 0;
+
+      for (const item of inspection.items) {
+        for (const ev of item.evidence) {
+          try {
+            const buffer = await this.storage.download(ev.objectKey);
+            document.image(buffer, imgX + col * 175, imgY, {
+              width: 160,
+              height: 120,
+            });
+            col++;
+            if (col >= 3) {
+              col = 0;
+              imgY += 140;
+              if (imgY > 650) {
+                document.addPage();
+                imgY = 50;
+              }
+            }
+          } catch (err) {
+            console.error(
+              `Failed to download and render PDF image: ${ev.objectKey}`,
+              err,
+            );
+          }
+        }
+      }
+    }
+
+    document.end();
+
+    const buffer = await pdfPromise;
+    return {
+      buffer,
+      fileName: `${inspection.inspectionNo}.pdf`,
+      contentType: 'application/pdf',
+    };
   }
 
   private requireOfficerAgency(user: JwtClaims) {
@@ -703,6 +974,38 @@ export class OfficerService {
     return user.agencyId;
   }
 
+  private pdfFontPaths() {
+    const regular = this.firstValidFontPath([
+      resolve(process.cwd(), 'src/assets/fonts/NotoSansThai-Regular.ttf'),
+      '/usr/share/fonts/noto/NotoSansThai-Regular.ttf',
+      '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+      '/Library/Fonts/Arial Unicode.ttf',
+      '/System/Library/Fonts/Supplemental/Thonburi.ttc',
+      '/System/Library/Fonts/ThonburiUI.ttc',
+    ]);
+    const bold =
+      this.firstValidFontPath([
+        resolve(process.cwd(), 'src/assets/fonts/NotoSansThai-Bold.ttf'),
+        '/usr/share/fonts/noto/NotoSansThai-Bold.ttf',
+        '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+        '/Library/Fonts/Arial Unicode.ttf',
+        '/System/Library/Fonts/Supplemental/Thonburi.ttc',
+        '/System/Library/Fonts/ThonburiUI.ttc',
+      ]) ?? regular;
+    if (!regular || !bold) return null;
+    return { regular, bold };
+  }
+
+  private firstValidFontPath(paths: string[]) {
+    return paths.find((path) => this.isValidFontFile(path));
+  }
+
+  private isValidFontFile(path: string) {
+    if (!existsSync(path)) return false;
+    const header = readFileSync(path).subarray(0, 4).toString('hex');
+    return FONT_MAGIC_HEADERS.includes(header);
+  }
+
   private findDuplicate(values: string[]) {
     const seen = new Set<string>();
     for (const value of values) {
@@ -710,6 +1013,26 @@ export class OfficerService {
       seen.add(value);
     }
     return null;
+  }
+
+  private dateRange(dateFrom?: string, dateTo?: string) {
+    if (!dateFrom && !dateTo) return undefined;
+    return {
+      gte: dateFrom ? this.startDateBoundary(dateFrom) : undefined,
+      lte: dateTo ? this.endDateBoundary(dateTo) : undefined,
+    } satisfies Prisma.DateTimeFilter;
+  }
+
+  private startDateBoundary(value: string) {
+    return DATE_ONLY_RE.test(value)
+      ? new Date(`${value}T00:00:00.000Z`)
+      : new Date(value);
+  }
+
+  private endDateBoundary(value: string) {
+    return DATE_ONLY_RE.test(value)
+      ? new Date(`${value}T23:59:59.999Z`)
+      : new Date(value);
   }
 
   private officerSnapshot(officer: {

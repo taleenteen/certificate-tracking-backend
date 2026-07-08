@@ -25,6 +25,7 @@ RUN npx prisma generate && npm run build
 FROM node:20-alpine AS production
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
+RUN apk add --no-cache font-noto-thai
 RUN addgroup -S app && adduser -S app -G app
 # Copy everything including devDeps so entrypoint has prisma + ts-node for seed
 COPY --from=build --chown=app:app /usr/src/app/node_modules ./node_modules

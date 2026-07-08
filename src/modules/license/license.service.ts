@@ -141,8 +141,8 @@ export class LicenseService {
           : undefined,
       },
     };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.license.findMany({
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.license.findMany({
         where,
         include: {
           licenseType: {
@@ -169,9 +169,10 @@ export class LicenseService {
         orderBy: { updatedAt: 'desc' },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-      }),
-      this.prisma.license.count({ where }),
-    ]);
+      });
+      const total = await tx.license.count({ where });
+      return [data, total] as const;
+    });
     return {
       data: data.map((license) => ({
         id: license.id,
@@ -206,8 +207,8 @@ export class LicenseService {
       nameTh: query.q ? { contains: query.q, mode: 'insensitive' } : undefined,
       licenses: { some: licenseWhere },
     };
-    const [businesses, total] = await this.prisma.$transaction([
-      this.prisma.business.findMany({
+    const [businesses, total] = await this.prisma.$transaction(async (tx) => {
+      const businesses = await tx.business.findMany({
         where,
         select: {
           id: true,
@@ -236,9 +237,10 @@ export class LicenseService {
         orderBy: { nameTh: 'asc' },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-      }),
-      this.prisma.business.count({ where }),
-    ]);
+      });
+      const total = await tx.business.count({ where });
+      return [businesses, total] as const;
+    });
     return {
       data: businesses.map((business) => ({
         id: business.id,

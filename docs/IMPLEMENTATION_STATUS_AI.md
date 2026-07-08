@@ -14,6 +14,57 @@
 
 ## 0. Change Log
 
+- **2026-07-08 (pg client query deprecation fix)** — Removed all Prisma array
+  transaction calls (`$transaction([ ... ])`) from backend services and the
+  Prisma seed reset, replacing them with interactive transactions that await
+  each query sequentially. Updated the Docker production entrypoint seed check
+  to use explicit async/await for direct `pg` access. Verified build, lint,
+  unit tests, e2e tests, and a rebuilt local-prod backend container restart;
+  the previous `Calling client.query() when the client is already executing a
+  query` warning no longer appears in fresh Docker logs.
+- **2026-07-08 (prototype production compose alignment)** — Replaced
+  `docker-compose.production.yml` with a production-named version of the
+  verified local prototype stack. It now uses backend `.env` plus frontend
+  `../../Frontend/certificate-tracking/.env`, builds production Docker images,
+  runs with HTTP-friendly demo settings, migrates and seeds on empty DB, and
+  stores data in `certificate-tracking-production` Docker resources. Added
+  `scripts/production-stack.sh` for `up`, `verify`, `logs`, `down`, and `reset`.
+  Verified on alternate ports: backend/frontend images built, all services were
+  healthy, seed counts were present, and RNG4 invariant returned zero violations.
+- **2026-07-08 (Docker Thai PDF font fix)** — Fixed unreadable Thai text in
+  Docker-generated officer inspection PDFs. Root cause: bundled
+  `src/assets/fonts/NotoSansThai-*.ttf` files were actually GitHub HTML pages,
+  and Docker/Linux had no macOS Thai font fallback, so PDFKit fell back to
+  Helvetica. Backend production image now installs Alpine `font-noto-thai`, and
+  the PDF exporter checks `/usr/share/fonts/noto/NotoSansThai-*.ttf`. Removed
+  the invalid `.ttf` HTML files. Verified in the local Docker stack by exporting
+  a real officer inspection PDF; response was `application/pdf`, 687044 bytes,
+  with embedded `NotoSansThai` subset.
+- **2026-07-08 (local production-like Docker stack)** — Added
+  `docker-compose.local-prod.yml` plus `scripts/local-prod-stack.sh` and
+  `docs/LOCAL_DOCKER_PROD.md` for a localhost proof stack that builds backend
+  and frontend Docker images, starts PostgreSQL 16 and MinIO, runs Prisma
+  migrations, seeds only when the database is empty, exposes the Next.js app on
+  localhost, and verifies core seed counts plus the RNG4 no-expire-date
+  invariant. Verified on alternate local ports: both Docker images built,
+  all four services became healthy, seed counts were present, RNG4 invariant
+  returned zero violations, and a frontend-BFF `POST /api/auth/register`
+  created a new public user in Docker Postgres.
+- **2026-07-08 (officer inspection PDF export styling)** — Updated PDF export layout at `GET /api/officer/inspections/:id/export?format=pdf` using registered Noto Sans Thai fonts for readable Thai text, matching the requested report format, and placing all evidence pictures on page 2 in a grid.
+- **2026-07-08 (officer inspection PDF report export)** — Improved
+  `GET /api/officer/inspections/:id/export?format=pdf` so the exported file is
+  a structured inspection report PDF for that inspection, including report
+  summary, officer, business, item/license details, notes, and evidence counts.
+  Fixed invalid bundled `.ttf` files being registered as PDFKit fonts by
+  validating font headers and falling back to system Thai-capable fonts; changed
+  export audit persistence to a sequential transaction to avoid pg query overlap
+  warnings on export.
+- **2026-07-08 (officer inspection report list)** — Added `GET
+  /api/officer/inspections` for the logged-in officer's own submitted field
+  reports, shared the list response shape with admin officer logs, and normalized
+  plain date filters so `dateTo=YYYY-MM-DD` includes the full day. Updated the
+  officer reporting frontend handoff contract.
+- **2026-07-08 (officer inspection upload & item validation)** — Refactored officer field inspection reporting to support a 3-field structure per item: licenseId, detailNote, and optional pictures. Implemented temporary upload capability under POST /api/officer/inspections/upload to stage files in MinIO before a single batch transaction. Fixed E2E test suite mock tokens and scoping filter queries to enable successful runs.
 - **2026-07-02 (production compose deploy)** — Added
   `docker-compose.production.yml`, an all-in-one Ubuntu production stack using
   inline Dockerfiles for frontend/backend plus Postgres, MinIO, and Caddy HTTPS

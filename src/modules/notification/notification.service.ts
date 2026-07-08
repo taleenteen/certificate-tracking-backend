@@ -8,15 +8,16 @@ export class NotificationService {
 
   async list(userId: string, pagination: PaginationDto) {
     const where = { recipientId: userId };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.notification.findMany({
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: (pagination.page - 1) * pagination.limit,
         take: pagination.limit,
-      }),
-      this.prisma.notification.count({ where }),
-    ]);
+      });
+      const total = await tx.notification.count({ where });
+      return [data, total] as const;
+    });
     return { data, meta: { ...pagination, total } };
   }
 

@@ -8,13 +8,37 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+
+export class CreateOfficerInspectionEvidenceDto {
+  /** The original file name. */
+  @IsString()
+  @MaxLength(255)
+  fileName!: string;
+
+  /** The object key returned by the temp upload endpoint. */
+  @IsString()
+  @MaxLength(500)
+  objectKey!: string;
+
+  /** The MIME type of the uploaded file. */
+  @IsString()
+  @MaxLength(100)
+  mimeType!: string;
+
+  /** The file size in bytes. */
+  @IsInt()
+  @Min(1)
+  fileSizeBytes!: number;
+}
 
 export class OfficerLicenseQueryDto extends PaginationDto {
   /**
@@ -78,6 +102,13 @@ export class CreateOfficerInspectionItemDto {
   /** Flexible structured findings for UI form answers. */
   @IsOptional()
   findings?: unknown;
+
+  /** Optional evidence pictures for this item. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOfficerInspectionEvidenceDto)
+  pictures?: CreateOfficerInspectionEvidenceDto[];
 }
 
 export class CreateOfficerInspectionDto {
@@ -87,10 +118,12 @@ export class CreateOfficerInspectionDto {
 
   /**
    * Actual inspection timestamp (ISO-8601). Server submit time is stored separately.
+   * Defaults to current time if omitted.
    * @example 2026-07-01T09:00:00.000Z
    */
+  @IsOptional()
   @IsDateString()
-  inspectedAt!: string;
+  inspectedAt?: string;
 
   /** Batch-level summary note. */
   @IsOptional()
@@ -133,6 +166,43 @@ export class OfficerInspectionLogQueryDto extends PaginationDto {
 
   /**
    * Inclusive end of inspected-at range (ISO-8601).
+   * @example 2026-07-31
+   */
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
+}
+
+export class OfficerInspectionListQueryDto extends PaginationDto {
+  /**
+   * Search by inspection number, business name, or officer name.
+   * @example IR-2026
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  /** Filter by business / branch (uuid). */
+  @IsOptional()
+  @IsUUID()
+  businessId?: string;
+
+  /** Filter by license (uuid). */
+  @IsOptional()
+  @IsUUID()
+  licenseId?: string;
+
+  /**
+   * Inclusive start of inspected-at range (ISO-8601 or YYYY-MM-DD).
+   * @example 2026-07-01
+   */
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  /**
+   * Inclusive end of inspected-at range (ISO-8601 or YYYY-MM-DD).
    * @example 2026-07-31
    */
   @IsOptional()

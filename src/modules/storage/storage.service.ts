@@ -86,4 +86,21 @@ export class StorageService implements OnModuleInit {
       { expiresIn: 600 },
     );
   }
+
+  async download(objectKey: string): Promise<Buffer> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+    );
+    if (!response.Body) {
+      throw new Error(`Object ${objectKey} has no body`);
+    }
+    const chunks: Buffer[] = [];
+    const stream = response.Body as AsyncIterable<Uint8Array>;
+    for await (const chunk of stream) {
+      chunks.push(
+        Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+      );
+    }
+    return Buffer.concat(chunks);
+  }
 }

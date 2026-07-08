@@ -34,16 +34,17 @@ export class BusinessService {
       province: query.province,
       nameTh: query.q ? { contains: query.q, mode: 'insensitive' } : undefined,
     };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.business.findMany({
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const data = await tx.business.findMany({
         where,
         include: BUSINESS_LIST_INCLUDE,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
         orderBy: { nameTh: 'asc' },
-      }),
-      this.prisma.business.count({ where }),
-    ]);
+      });
+      const total = await tx.business.count({ where });
+      return [data, total] as const;
+    });
     return {
       data: data.map((business) => this.toPublicBusinessDto(business)),
       meta: { page: query.page, limit: query.limit, total },
