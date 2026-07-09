@@ -14,6 +14,34 @@
 
 ## 0. Change Log
 
+- **2026-07-09 (juristic license tab and officer conflict guardrails)** —
+  Refactored the juristic license response contract to expose
+  `corporateLicenses` separately from premise/business licenses while leaving a
+  `TODO(schema)` because the locked schema still requires `License.businessId`.
+  Updated officer-facing license/status and inspection review paths to reject
+  conflicts of interest for individually owned businesses and juristic
+  OWNER/ADMIN memberships.
+- **2026-07-09 (officer inspection detail editing)** — Added
+  `PATCH /api/officer/inspections/:inspectionId/items/:itemId` for the creating
+  officer/admin tier to update an inspection item note/findings, and wired the
+  frontend officer inspection detail page to show per-item edit controls plus
+  camera-only evidence capture.
+- **2026-07-09 (business contact detail)** — Added prototype business contact
+  email values to public and juristic business detail responses without a
+  schema change, and wired the frontend business detail page to display backend
+  phone/email values instead of placeholders.
+- **2026-07-09 (mock seed coordinate pool)** — Added a deterministic
+  Thailand-only coordinate pool for prototype mock data, weighted toward
+  Greater Bangkok and nearby industrial provinces. Personal and juristic dev
+  seed helpers now reuse stable per-user mock entities with coordinate metadata
+  rendered into Thai addresses, and `POST /api/my/dev/seed-demo-data` creates
+  the complete personal + juristic demo flow for frontend QA.
+- **2026-07-09 (e-map demo data alignment)** — Linked the personal dev license
+  seed to one stable user-owned demo business with Bangkok coordinates, so the
+  created mock license appears in both the license page and e-map. Expanded
+  `GET /api/businesses/map` GeoJSON properties with license count, primary
+  license, status counts, address, province, and ownership summary for frontend
+  pin popups without exposing raw personal owner IDs.
 - **2026-07-08 (production Mapbox build env)** — Updated production compose to
   pass frontend public env values into the Next.js Docker build. The e-map reads
   `NEXT_PUBLIC_MAPBOX_TOKEN` in client code, so the token must be available

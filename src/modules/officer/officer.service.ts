@@ -6,6 +6,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
+  JuristicRole,
   LicenseStatus,
   OfficerInspectionStatus,
   OfficerProfileScanResult,
@@ -32,6 +33,7 @@ import {
   OfficerInspectionListQueryDto,
   OfficerInspectionLogQueryDto,
   OfficerLicenseQueryDto,
+  UpdateOfficerInspectionItemDto,
 } from './officer.dto';
 
 interface ExportFile {
@@ -69,10 +71,18 @@ export class OfficerService {
     private readonly storage: StorageService,
   ) {}
 
-  async listLicenses(query: OfficerLicenseQueryDto) {
+  async listLicenses(query: OfficerLicenseQueryDto, user: JwtClaims) {
+    const conflictJuristicIds = await this.conflictJuristicPersonIds(user.sub);
+    const conflictFilters: Prisma.LicenseWhereInput[] = [
+      { business: { ownerUserId: user.sub } },
+      ...(conflictJuristicIds.length
+        ? [{ business: { juristicPersonId: { in: conflictJuristicIds } } }]
+        : []),
+    ];
     const where: Prisma.LicenseWhereInput = {
       deletedAt: null,
       status: query.status,
+      NOT: conflictFilters,
       businessId: query.businessId,
       business: {
         deletedAt: null,
@@ -154,6 +164,7 @@ export class OfficerService {
       },
     });
     if (!business) throw new NotFoundException();
+    await this.assertNoBusinessConflict(user.sub, business);
 
     const licenses = await this.prisma.license.findMany({
       where: {
@@ -337,6 +348,37 @@ export class OfficerService {
       fileSizeBytes: file.size,
       url: await this.storage.presign(objectKey),
     };
+  }
+
+  async updateInspectionItem(
+    inspectionId: string,
+    itemId: string,
+    dto: UpdateOfficerInspectionItemDto,
+    user: JwtClaims,
+  ) {
+    const inspection = await this.findInspectionForAccess(inspectionId, user);
+    if (
+      inspection.status === OfficerInspectionStatus.VOIDED ||
+      (!isAdminTier(user.roles) && inspection.officerId !== user.sub)
+    ) {
+      throw new UnprocessableEntityException('Inspection is not editable');
+    }
+
+    const item = inspection.items.find((row) => row.id === itemId);
+    if (!item) throw new NotFoundException();
+
+    await this.prisma.officerInspectionItem.update({
+      where: { id: itemId },
+      data: {
+        detailNote: dto.detailNote ?? null,
+        findings:
+          dto.findings === undefined
+            ? undefined
+            : (dto.findings as Prisma.InputJsonValue),
+      },
+    });
+
+    return this.findInspection(inspectionId, user);
   }
 
   async findInspection(id: string, user: JwtClaims) {
@@ -644,6 +686,42 @@ export class OfficerService {
     });
     if (!inspection) throw new NotFoundException();
     return inspection;
+  }
+
+  private async assertNoBusinessConflict(
+    userId: string,
+    business: { ownerUserId: string | null; juristicPersonId: string | null },
+  ) {
+    if (business.ownerUserId === userId) {
+      throw new ConflictException('Officer has a conflict of interest');
+    }
+    if (!business.juristicPersonId) return;
+
+    const membership = await this.prisma.juristicMember.findFirst({
+      where: {
+        juristicPersonId: business.juristicPersonId,
+        userId,
+        isActive: true,
+        // DECISION: OWNER and ADMIN can act for a company, so both are treated as conflicted reviewers.
+        role: { in: [JuristicRole.OWNER, JuristicRole.ADMIN] },
+      },
+      select: { id: true },
+    });
+    if (membership) {
+      throw new ConflictException('Officer has a conflict of interest');
+    }
+  }
+
+  private async conflictJuristicPersonIds(userId: string) {
+    const memberships = await this.prisma.juristicMember.findMany({
+      where: {
+        userId,
+        isActive: true,
+        role: { in: [JuristicRole.OWNER, JuristicRole.ADMIN] },
+      },
+      select: { juristicPersonId: true },
+    });
+    return memberships.map((membership) => membership.juristicPersonId);
   }
 
   private async toInspectionDetail(

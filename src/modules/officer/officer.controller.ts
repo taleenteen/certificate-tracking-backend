@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -37,6 +38,7 @@ import {
   OfficerInspectionListQueryDto,
   OfficerInspectionLogQueryDto,
   OfficerLicenseQueryDto,
+  UpdateOfficerInspectionItemDto,
 } from './officer.dto';
 import { OfficerService } from './officer.service';
 
@@ -57,8 +59,11 @@ export class OfficerController {
     description: 'Paginated license results for field reports.',
   })
   @Get('officer/licenses')
-  listLicenses(@Query() query: OfficerLicenseQueryDto) {
-    return this.officers.listLicenses(query);
+  listLicenses(
+    @Query() query: OfficerLicenseQueryDto,
+    @CurrentUser() user: JwtClaims,
+  ) {
+    return this.officers.listLicenses(query, user);
   }
 
   @Roles('officer')
@@ -168,6 +173,37 @@ export class OfficerController {
     @CurrentUser() user: JwtClaims,
   ) {
     return this.officers.uploadEvidence(inspectionId, itemId, user, file);
+  }
+
+  @Roles('officer')
+  @ApiOperation({
+    summary: 'Update one officer inspection item',
+    description:
+      'Allows the creating officer to edit the detail note / findings for one report item.',
+  })
+  @ApiParam({
+    name: 'inspectionId',
+    description: 'Inspection uuid',
+    format: 'uuid',
+  })
+  @ApiParam({
+    name: 'itemId',
+    description: 'Inspection item uuid',
+    format: 'uuid',
+  })
+  @ApiOkResponse({ description: 'Updated inspection detail.' })
+  @ApiNotFoundResponse({ description: 'Inspection or item not found.' })
+  @ApiUnprocessableEntityResponse({
+    description: 'Inspection is not editable.',
+  })
+  @Patch('officer/inspections/:inspectionId/items/:itemId')
+  updateInspectionItem(
+    @Param('inspectionId') inspectionId: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateOfficerInspectionItemDto,
+    @CurrentUser() user: JwtClaims,
+  ) {
+    return this.officers.updateInspectionItem(inspectionId, itemId, dto, user);
   }
 
   @Roles('officer')

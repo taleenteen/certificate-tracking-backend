@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   LicenseStatus,
+  JuristicRole,
   Prisma,
   ReportResult,
   TaskStatus,
@@ -138,11 +139,7 @@ export class InspectionService {
         },
       });
       if (!assignee) throw new NotFoundException();
-      if (business.ownerUserId === assignee.id) {
-        throw new ConflictException(
-          'Assignee has a conflict of interest with this business',
-        );
-      }
+      await this.assertNoBusinessConflict(assignee.id, business);
     }
 
     if (dto.licenseId) {
@@ -237,11 +234,7 @@ export class InspectionService {
       },
     });
     if (!assignee) throw new NotFoundException();
-    if (task.business.ownerUserId === assignee.id) {
-      throw new ConflictException(
-        'Assignee has a conflict of interest with this business',
-      );
-    }
+    await this.assertNoBusinessConflict(assignee.id, task.business);
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.inspectionTask.update({
@@ -265,9 +258,10 @@ export class InspectionService {
   async startTask(id: string, user: JwtClaims) {
     const task = await this.prisma.inspectionTask.findFirst({
       where: { id, assignedTo: user.sub },
-      include: { license: true },
+      include: { business: true, license: true },
     });
     if (!task) throw new NotFoundException();
+    await this.assertNoBusinessConflict(user.sub, task.business);
     if (task.status !== TaskStatus.ASSIGNED) {
       throw new UnprocessableEntityException('Invalid task transition');
     }
@@ -460,7 +454,9 @@ export class InspectionService {
               ],
             },
       },
-      include: { task: { include: { license: true } } },
+      include: {
+        task: { include: { business: true, license: true } },
+      },
     });
     // Admin tier reviews any report; otherwise only officers in scope.
     if (!report || (!admin && !user.roles.includes('officer'))) {
@@ -474,6 +470,10 @@ export class InspectionService {
     if (report.task.status !== TaskStatus.PENDING_REVIEW || !report.result) {
       throw new UnprocessableEntityException('Invalid task transition');
     }
+    if (report.inspectorId === user.sub) {
+      throw new ConflictException('Officer cannot approve their own report');
+    }
+    await this.assertNoBusinessConflict(user.sub, report.task.business);
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.inspectionReport.update({
         where: { id },
@@ -514,6 +514,34 @@ export class InspectionService {
       });
       return updated;
     });
+  }
+
+  private async assertNoBusinessConflict(
+    userId: string,
+    business: { ownerUserId: string | null; juristicPersonId: string | null },
+  ) {
+    if (business.ownerUserId === userId) {
+      throw new ConflictException(
+        'Assignee has a conflict of interest with this business',
+      );
+    }
+    if (!business.juristicPersonId) return;
+
+    const membership = await this.prisma.juristicMember.findFirst({
+      where: {
+        juristicPersonId: business.juristicPersonId,
+        userId,
+        isActive: true,
+        // DECISION: OWNER and ADMIN can act for a company, so both are treated as conflicted reviewers.
+        role: { in: [JuristicRole.OWNER, JuristicRole.ADMIN] },
+      },
+      select: { id: true },
+    });
+    if (membership) {
+      throw new ConflictException(
+        'Assignee has a conflict of interest with this business',
+      );
+    }
   }
 
   async returnReport(

@@ -67,6 +67,194 @@ type JuristicLicenseGroupRow = Prisma.JuristicMemberGetPayload<{
   include: typeof JURISTIC_LICENSE_GROUP_INCLUDE;
 }>;
 
+type DevSeedUser = {
+  id: string;
+  fullName: string;
+};
+
+type DevCoordinatePoolItem = {
+  key: string;
+  weight: number;
+  province: string;
+  amphoeTh: string;
+  tambonTh: string;
+  postalCode: string;
+  addressBase: string;
+  lat: number;
+  lng: number;
+  bbox: {
+    minLat: number;
+    maxLat: number;
+    minLng: number;
+    maxLng: number;
+  };
+};
+
+const THAILAND_BOUNDS = {
+  minLat: 5.6,
+  maxLat: 20.5,
+  minLng: 97.3,
+  maxLng: 105.7,
+} as const;
+
+// MOCK: replace in UAT — pre-vetted Thai business/industrial anchors for demo pins.
+const DEV_COORDINATE_POOL: DevCoordinatePoolItem[] = [
+  {
+    key: 'bkk-bang-rak',
+    weight: 6,
+    province: 'กรุงเทพมหานคร',
+    amphoeTh: 'เขตบางรัก',
+    tambonTh: 'แขวงสีลม',
+    postalCode: '10500',
+    addressBase: 'ถนนสีลม',
+    lat: 13.7279,
+    lng: 100.5241,
+    bbox: {
+      minLat: 13.7205,
+      maxLat: 13.7352,
+      minLng: 100.5165,
+      maxLng: 100.5328,
+    },
+  },
+  {
+    key: 'bkk-khlong-toei',
+    weight: 6,
+    province: 'กรุงเทพมหานคร',
+    amphoeTh: 'เขตคลองเตย',
+    tambonTh: 'แขวงคลองเตย',
+    postalCode: '10110',
+    addressBase: 'ถนนสุขุมวิท',
+    lat: 13.7223,
+    lng: 100.5606,
+    bbox: {
+      minLat: 13.7098,
+      maxLat: 13.7335,
+      minLng: 100.5482,
+      maxLng: 100.5755,
+    },
+  },
+  {
+    key: 'samut-prakan-bangpoo',
+    weight: 7,
+    province: 'สมุทรปราการ',
+    amphoeTh: 'อำเภอเมืองสมุทรปราการ',
+    tambonTh: 'ตำบลแพรกษา',
+    postalCode: '10280',
+    addressBase: 'นิคมอุตสาหกรรมบางปู',
+    lat: 13.5456,
+    lng: 100.6517,
+    bbox: { minLat: 13.525, maxLat: 13.565, minLng: 100.628, maxLng: 100.675 },
+  },
+  {
+    key: 'pathum-thani-bang-kadi',
+    weight: 7,
+    province: 'ปทุมธานี',
+    amphoeTh: 'อำเภอเมืองปทุมธานี',
+    tambonTh: 'ตำบลบางกะดี',
+    postalCode: '12120',
+    addressBase: 'สวนอุตสาหกรรมบางกะดี',
+    lat: 13.9827,
+    lng: 100.5482,
+    bbox: { minLat: 13.963, maxLat: 14.002, minLng: 100.529, maxLng: 100.568 },
+  },
+  {
+    key: 'nonthaburi-pakkret',
+    weight: 4,
+    province: 'นนทบุรี',
+    amphoeTh: 'อำเภอปากเกร็ด',
+    tambonTh: 'ตำบลบางตลาด',
+    postalCode: '11120',
+    addressBase: 'ถนนแจ้งวัฒนะ',
+    lat: 13.9142,
+    lng: 100.5371,
+    bbox: { minLat: 13.895, maxLat: 13.928, minLng: 100.518, maxLng: 100.555 },
+  },
+  {
+    key: 'samut-sakhon-krathum-baen',
+    weight: 5,
+    province: 'สมุทรสาคร',
+    amphoeTh: 'อำเภอกระทุ่มแบน',
+    tambonTh: 'ตำบลอ้อมน้อย',
+    postalCode: '74130',
+    addressBase: 'ถนนเศรษฐกิจ',
+    lat: 13.7052,
+    lng: 100.3065,
+    bbox: { minLat: 13.688, maxLat: 13.724, minLng: 100.284, maxLng: 100.328 },
+  },
+  {
+    key: 'nakhon-pathom-sampran',
+    weight: 4,
+    province: 'นครปฐม',
+    amphoeTh: 'อำเภอสามพราน',
+    tambonTh: 'ตำบลไร่ขิง',
+    postalCode: '73210',
+    addressBase: 'ถนนเพชรเกษม',
+    lat: 13.7416,
+    lng: 100.2768,
+    bbox: { minLat: 13.724, maxLat: 13.758, minLng: 100.258, maxLng: 100.296 },
+  },
+  {
+    key: 'chonburi-amata',
+    weight: 3,
+    province: 'ชลบุรี',
+    amphoeTh: 'อำเภอเมืองชลบุรี',
+    tambonTh: 'ตำบลดอนหัวฬ่อ',
+    postalCode: '20000',
+    addressBase: 'นิคมอุตสาหกรรมอมตะซิตี้ ชลบุรี',
+    lat: 13.4179,
+    lng: 101.0214,
+    bbox: { minLat: 13.394, maxLat: 13.438, minLng: 100.998, maxLng: 101.044 },
+  },
+  {
+    key: 'rayong-map-ta-phut',
+    weight: 3,
+    province: 'ระยอง',
+    amphoeTh: 'อำเภอเมืองระยอง',
+    tambonTh: 'ตำบลมาบตาพุด',
+    postalCode: '21150',
+    addressBase: 'นิคมอุตสาหกรรมมาบตาพุด',
+    lat: 12.7078,
+    lng: 101.1708,
+    bbox: { minLat: 12.685, maxLat: 12.731, minLng: 101.146, maxLng: 101.196 },
+  },
+  {
+    key: 'ayutthaya-ro-jana',
+    weight: 3,
+    province: 'พระนครศรีอยุธยา',
+    amphoeTh: 'อำเภออุทัย',
+    tambonTh: 'ตำบลคานหาม',
+    postalCode: '13210',
+    addressBase: 'สวนอุตสาหกรรมโรจนะ',
+    lat: 14.3564,
+    lng: 100.6373,
+    bbox: { minLat: 14.335, maxLat: 14.379, minLng: 100.612, maxLng: 100.662 },
+  },
+  {
+    key: 'nakhon-ratchasima-suranaree',
+    weight: 2,
+    province: 'นครราชสีมา',
+    amphoeTh: 'อำเภอเมืองนครราชสีมา',
+    tambonTh: 'ตำบลสุรนารี',
+    postalCode: '30000',
+    addressBase: 'เขตอุตสาหกรรมสุรนารี',
+    lat: 14.8792,
+    lng: 102.0246,
+    bbox: { minLat: 14.858, maxLat: 14.902, minLng: 101.998, maxLng: 102.049 },
+  },
+  {
+    key: 'songkhla-hat-yai',
+    weight: 2,
+    province: 'สงขลา',
+    amphoeTh: 'อำเภอหาดใหญ่',
+    tambonTh: 'ตำบลคอหงส์',
+    postalCode: '90110',
+    addressBase: 'ถนนกาญจนวนิช',
+    lat: 7.0076,
+    lng: 100.4981,
+    bbox: { minLat: 6.987, maxLat: 7.029, minLng: 100.477, maxLng: 100.519 },
+  },
+];
+
 @Injectable()
 export class MyService {
   constructor(
@@ -204,6 +392,7 @@ export class MyService {
       latitude: business.latitude?.toString() ?? null,
       longitude: business.longitude?.toString() ?? null,
       phone: business.phone,
+      email: this.mockBusinessEmail(business.id),
       juristic: {
         id: business.juristicPerson.id,
         nameTh: business.juristicPerson.nameTh,
@@ -218,47 +407,42 @@ export class MyService {
 
   // MOCK: replace in UAT — dev-only endpoint to seed a near-expiry license
   async createDevLicense(userId: string) {
-    let business = await this.prisma.business.findFirst({
-      where: { ownerUserId: userId, deletedAt: null },
-    });
-
-    if (!business) {
-      business = await this.prisma.business.create({
-        data: {
-          nameTh: 'บริษัท ทดสอบระบบ จำกัด',
-          ownerUserId: userId,
-          address: '99/1 ถ.ทดสอบ แขวงทดสอบ เขตทดสอบ',
-          province: 'กรุงเทพมหานคร',
-        },
-      });
-    }
-
-    const types = await this.prisma.licenseType.findMany({
-      where: { isActive: true },
-      include: { agency: { select: { code: true } } },
-    });
-    if (!types.length)
-      throw new NotFoundException('No active license types — run seed first');
-    const lt = types[Math.floor(Math.random() * types.length)];
-
-    const daysLeft = 5 + Math.floor(Math.random() * 20); // 5–24 days — always "expiring soon"
-    const now = new Date();
-    const expireDate = new Date(now.getTime() + daysLeft * 86_400_000);
-    const licenseNo = `DEV-${Date.now().toString(36).toUpperCase()}`;
-
-    const license = await this.prisma.license.create({
-      data: {
-        licenseNo,
-        businessId: business.id,
-        licenseTypeId: lt.id,
-        status: LicenseStatus.ACTIVE,
-        issueDate: now,
-        expireDate,
-      },
-      include: LICENSE_INCLUDE,
+    const user = await this.devSeedUser(userId);
+    const license = await this.prisma.$transaction(async (tx) => {
+      const seeded = await this.seedPersonalDevData(tx, user);
+      return seeded.license;
     });
 
     return this.toLicenseDto(license);
+  }
+
+  // MOCK: replace in UAT — prototype helper that seeds both personal and juristic demo data.
+  async createDevDemoData(userId: string) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Dev seed is disabled in production');
+    }
+
+    const user = await this.devSeedUser(userId);
+    const seeded = await this.prisma.$transaction(async (tx) => {
+      const personal = await this.seedPersonalDevData(tx, user);
+      const juristic = await this.seedJuristicDevData(tx, user);
+      return {
+        personal: {
+          businessId: personal.businessId,
+          licenseIds: [personal.license.id],
+        },
+        juristic,
+      };
+    });
+    const groups = await this.getJuristicLicenseGroups(user.id);
+
+    return {
+      success: true,
+      personal: seeded.personal,
+      juristic: seeded.juristic,
+      messageTh: 'สร้างข้อมูลตัวอย่างครบชุดเรียบร้อย',
+      groups,
+    };
   }
 
   // MOCK: replace in UAT — prototype-only helper for frontend demo data.
@@ -267,123 +451,10 @@ export class MyService {
       throw new ForbiddenException('Dev seed is disabled in production');
     }
 
-    const user = await this.prisma.systemUser.findFirst({
-      where: { id: userId, deletedAt: null },
-      select: { id: true, fullName: true },
-    });
-    if (!user) throw new NotFoundException();
-
+    const user = await this.devSeedUser(userId);
     const demo = await this.prisma.$transaction(async (tx) => {
-      const { diwType, hazmatType, acfsType } =
-        await this.ensureDevLicenseTypes(tx);
-      const token = user.id.replace(/-/g, '').slice(0, 10).toUpperCase();
-      const registrationId = `DEV${token.slice(0, 10)}`.padEnd(13, '0');
-
-      const juristicPerson = await tx.juristicPerson.upsert({
-        where: { registrationId },
-        create: {
-          registrationId,
-          nameTh: `บริษัท ทดสอบของ ${user.fullName} จำกัด`,
-          nameEn: `Demo Company ${token} Co., Ltd.`,
-          juristicType: 'บริษัทจำกัด',
-          address:
-            '99/99 อาคารทดสอบ ถนนต้นแบบ แขวงทดสอบ เขตทดสอบ กรุงเทพมหานคร',
-        },
-        update: {
-          nameTh: `บริษัท ทดสอบของ ${user.fullName} จำกัด`,
-          nameEn: `Demo Company ${token} Co., Ltd.`,
-          juristicType: 'บริษัทจำกัด',
-          address:
-            '99/99 อาคารทดสอบ ถนนต้นแบบ แขวงทดสอบ เขตทดสอบ กรุงเทพมหานคร',
-        },
-      });
-
-      await tx.juristicMember.upsert({
-        where: {
-          juristicPersonId_userId: {
-            juristicPersonId: juristicPerson.id,
-            userId: user.id,
-          },
-        },
-        create: {
-          juristicPersonId: juristicPerson.id,
-          userId: user.id,
-          role: JuristicRole.OWNER,
-          position: 'กรรมการผู้จัดการ',
-          isActive: true,
-        },
-        update: {
-          role: JuristicRole.OWNER,
-          position: 'กรรมการผู้จัดการ',
-          isActive: true,
-        },
-      });
-
-      const factory = await this.upsertDevBusiness(tx, {
-        nameTh: `โรงงานต้นแบบ ${user.fullName}`,
-        juristicPersonId: juristicPerson.id,
-        address: '88/8 นิคมอุตสาหกรรมต้นแบบ ถนนอุตสาหกรรม แขวงทดสอบ เขตทดสอบ',
-        province: 'กรุงเทพมหานคร',
-        latitude: new Prisma.Decimal('13.756300'),
-        longitude: new Prisma.Decimal('100.501800'),
-        phone: '021234567',
-      });
-      const warehouse = await this.upsertDevBusiness(tx, {
-        nameTh: `คลังสินค้าและศูนย์กระจายสินค้า ${user.fullName}`,
-        juristicPersonId: juristicPerson.id,
-        address:
-          '55/5 โครงการคลังสินค้าต้นแบบ ถนนโลจิสติกส์ แขวงทดสอบ เขตทดสอบ',
-        province: 'กรุงเทพมหานคร',
-        latitude: new Prisma.Decimal('13.761300'),
-        longitude: new Prisma.Decimal('100.509800'),
-        phone: '029876543',
-      });
-
-      const issueDate = new Date();
-      issueDate.setUTCFullYear(issueDate.getUTCFullYear() - 1);
-      const hazmatExpire = new Date();
-      hazmatExpire.setUTCDate(hazmatExpire.getUTCDate() + 45);
-      const acfsExpire = new Date();
-      acfsExpire.setUTCFullYear(acfsExpire.getUTCFullYear() + 1);
-
-      await Promise.all([
-        this.upsertDevLicense(tx, {
-          licenseNo: `DEV-${token}-RNG4`,
-          businessId: factory.id,
-          licenseTypeId: diwType.id,
-          status: LicenseStatus.ACTIVE,
-          issueDate,
-          expireDate: null,
-        }),
-        this.upsertDevLicense(tx, {
-          licenseNo: `DEV-${token}-HAZMAT`,
-          businessId: factory.id,
-          licenseTypeId: hazmatType.id,
-          status: LicenseStatus.ACTIVE,
-          issueDate,
-          expireDate: hazmatExpire,
-        }),
-        this.upsertDevLicense(tx, {
-          licenseNo: `DEV-${token}-ACFS`,
-          businessId: warehouse.id,
-          licenseTypeId: acfsType.id,
-          status: LicenseStatus.ACTIVE,
-          issueDate,
-          expireDate: acfsExpire,
-        }),
-        this.upsertDevLicense(tx, {
-          licenseNo: `DEV-${token}-SUSPENDED`,
-          businessId: warehouse.id,
-          licenseTypeId: hazmatType.id,
-          status: LicenseStatus.SUSPENDED,
-          issueDate,
-          expireDate: hazmatExpire,
-          suspendedAt: new Date(),
-          suspensionReason: 'ระงับชั่วคราวเพื่อทดสอบ UI',
-        }),
-      ]);
-
-      return juristicPerson;
+      const seeded = await this.seedJuristicDevData(tx, user);
+      return { id: seeded.juristicId };
     });
 
     const groups = await this.getJuristicLicenseGroups(user.id);
@@ -393,6 +464,250 @@ export class MyService {
       messageTh: 'สร้างข้อมูลนิติบุคคลตัวอย่างเรียบร้อย',
       groups,
     };
+  }
+
+  private async devSeedUser(userId: string) {
+    const user = await this.prisma.systemUser.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { id: true, fullName: true },
+    });
+    if (!user) throw new NotFoundException();
+    return user;
+  }
+
+  private async seedPersonalDevData(
+    tx: Prisma.TransactionClient,
+    user: DevSeedUser,
+  ) {
+    const { hazmatType } = await this.ensureDevLicenseTypes(tx);
+    const token = this.devToken(user.id);
+    const location = this.devLocation(user.id, 'individual', 0);
+    const business = await this.upsertPersonalDevBusiness(tx, {
+      ownerUserId: user.id,
+      nameTh: `กิจการทดสอบบุคคลธรรมดา ${token} - ${location.province}`,
+      address: this.devAddress(location, 99, 'อาคารทดสอบบุคคลธรรมดา'),
+      province: location.province,
+      latitude: new Prisma.Decimal(location.latitude.toFixed(6)),
+      longitude: new Prisma.Decimal(location.longitude.toFixed(6)),
+      phone: this.devPhone(token, 1),
+    });
+
+    const now = new Date();
+    const issueDate = new Date(now);
+    issueDate.setUTCFullYear(issueDate.getUTCFullYear() - 1);
+    const expireDate = new Date(now.getTime() + 14 * 86_400_000);
+    const licenseNo = `DEV-${token}-IND-HAZMAT`;
+
+    await this.upsertDevLicense(tx, {
+      licenseNo,
+      businessId: business.id,
+      licenseTypeId: hazmatType.id,
+      status: LicenseStatus.ACTIVE,
+      issueDate,
+      expireDate,
+    });
+
+    const license = await tx.license.findUniqueOrThrow({
+      where: { licenseNo },
+      include: LICENSE_INCLUDE,
+    });
+
+    return { businessId: business.id, license };
+  }
+
+  private async seedJuristicDevData(
+    tx: Prisma.TransactionClient,
+    user: DevSeedUser,
+  ) {
+    const { diwType, hazmatType, acfsType } =
+      await this.ensureDevLicenseTypes(tx);
+    const token = this.devToken(user.id);
+    const registrationId = `DEV${token.slice(0, 10)}`.padEnd(13, '0');
+    const companyLocation = this.devLocation(user.id, 'juristic', 0);
+
+    const juristicPerson = await tx.juristicPerson.upsert({
+      where: { registrationId },
+      create: {
+        registrationId,
+        nameTh: `บริษัท ทดสอบ ${token} จำกัด`,
+        nameEn: `Demo Company ${token} Co., Ltd.`,
+        juristicType: 'บริษัทจำกัด',
+        address: this.devAddress(companyLocation, 199, 'สำนักงานใหญ่'),
+      },
+      update: {
+        nameTh: `บริษัท ทดสอบ ${token} จำกัด`,
+        nameEn: `Demo Company ${token} Co., Ltd.`,
+        juristicType: 'บริษัทจำกัด',
+        address: this.devAddress(companyLocation, 199, 'สำนักงานใหญ่'),
+      },
+    });
+
+    await tx.juristicMember.upsert({
+      where: {
+        juristicPersonId_userId: {
+          juristicPersonId: juristicPerson.id,
+          userId: user.id,
+        },
+      },
+      create: {
+        juristicPersonId: juristicPerson.id,
+        userId: user.id,
+        role: JuristicRole.OWNER,
+        position: 'กรรมการผู้จัดการ',
+        isActive: true,
+      },
+      update: {
+        role: JuristicRole.OWNER,
+        position: 'กรรมการผู้จัดการ',
+        isActive: true,
+      },
+    });
+
+    const factoryLocation = this.devLocation(user.id, 'factory', 1);
+    const warehouseLocation = this.devLocation(user.id, 'warehouse', 2);
+    const factory = await this.upsertDevBusiness(tx, {
+      nameTh: `โรงงานต้นแบบ ${token} - ${factoryLocation.province}`,
+      juristicPersonId: juristicPerson.id,
+      address: this.devAddress(factoryLocation, 88, 'โรงงานต้นแบบ'),
+      province: factoryLocation.province,
+      latitude: new Prisma.Decimal(factoryLocation.latitude.toFixed(6)),
+      longitude: new Prisma.Decimal(factoryLocation.longitude.toFixed(6)),
+      phone: this.devPhone(token, 2),
+    });
+    const warehouse = await this.upsertDevBusiness(tx, {
+      nameTh: `คลังสินค้าต้นแบบ ${token} - ${warehouseLocation.province}`,
+      juristicPersonId: juristicPerson.id,
+      address: this.devAddress(warehouseLocation, 55, 'คลังสินค้าต้นแบบ'),
+      province: warehouseLocation.province,
+      latitude: new Prisma.Decimal(warehouseLocation.latitude.toFixed(6)),
+      longitude: new Prisma.Decimal(warehouseLocation.longitude.toFixed(6)),
+      phone: this.devPhone(token, 3),
+    });
+
+    const issueDate = new Date();
+    issueDate.setUTCFullYear(issueDate.getUTCFullYear() - 1);
+    const hazmatExpire = new Date();
+    hazmatExpire.setUTCDate(hazmatExpire.getUTCDate() + 45);
+    const acfsExpire = new Date();
+    acfsExpire.setUTCFullYear(acfsExpire.getUTCFullYear() + 1);
+
+    const rng4License = await this.upsertDevLicense(tx, {
+      licenseNo: `DEV-${token}-RNG4`,
+      businessId: factory.id,
+      licenseTypeId: diwType.id,
+      status: LicenseStatus.ACTIVE,
+      issueDate,
+      expireDate: null,
+    });
+    const hazmatLicense = await this.upsertDevLicense(tx, {
+      licenseNo: `DEV-${token}-HAZMAT`,
+      businessId: factory.id,
+      licenseTypeId: hazmatType.id,
+      status: LicenseStatus.ACTIVE,
+      issueDate,
+      expireDate: hazmatExpire,
+    });
+    const acfsLicense = await this.upsertDevLicense(tx, {
+      licenseNo: `DEV-${token}-ACFS`,
+      businessId: warehouse.id,
+      licenseTypeId: acfsType.id,
+      status: LicenseStatus.ACTIVE,
+      issueDate,
+      expireDate: acfsExpire,
+    });
+    const suspendedLicense = await this.upsertDevLicense(tx, {
+      licenseNo: `DEV-${token}-SUSPENDED`,
+      businessId: warehouse.id,
+      licenseTypeId: hazmatType.id,
+      status: LicenseStatus.SUSPENDED,
+      issueDate,
+      expireDate: hazmatExpire,
+      suspendedAt: new Date(),
+      suspensionReason: 'ระงับชั่วคราวเพื่อทดสอบ UI',
+    });
+
+    return {
+      juristicId: juristicPerson.id,
+      businessIds: [factory.id, warehouse.id],
+      licenseIds: [
+        rng4License.id,
+        hazmatLicense.id,
+        acfsLicense.id,
+        suspendedLicense.id,
+      ],
+    };
+  }
+
+  private devToken(userId: string) {
+    return userId.replace(/-/g, '').slice(0, 10).toUpperCase();
+  }
+
+  private devLocation(userId: string, flow: string, slot: number) {
+    const totalWeight = DEV_COORDINATE_POOL.reduce(
+      (total, item) => total + item.weight,
+      0,
+    );
+    const point = this.devHash(`${userId}:${flow}`) % totalWeight;
+    let cursor = 0;
+    const selected =
+      DEV_COORDINATE_POOL.find((item) => {
+        cursor += item.weight;
+        return point < cursor;
+      }) ?? DEV_COORDINATE_POOL[0];
+
+    const latRatio = this.devRatio(`${userId}:${flow}:${slot}:lat`);
+    const lngRatio = this.devRatio(`${userId}:${flow}:${slot}:lng`);
+    const latitude =
+      selected.bbox.minLat +
+      (selected.bbox.maxLat - selected.bbox.minLat) * latRatio;
+    const longitude =
+      selected.bbox.minLng +
+      (selected.bbox.maxLng - selected.bbox.minLng) * lngRatio;
+
+    return {
+      ...selected,
+      latitude: this.clamp(
+        this.clamp(latitude, selected.bbox.minLat, selected.bbox.maxLat),
+        THAILAND_BOUNDS.minLat,
+        THAILAND_BOUNDS.maxLat,
+      ),
+      longitude: this.clamp(
+        this.clamp(longitude, selected.bbox.minLng, selected.bbox.maxLng),
+        THAILAND_BOUNDS.minLng,
+        THAILAND_BOUNDS.maxLng,
+      ),
+    };
+  }
+
+  private devAddress(
+    location: DevCoordinatePoolItem,
+    number: number,
+    placeName: string,
+  ) {
+    return `${number}/${this.devHash(location.key + placeName) % 90} ${placeName} ${location.addressBase} ${location.tambonTh} ${location.amphoeTh} ${location.province} ${location.postalCode}`;
+  }
+
+  private devPhone(token: string, slot: number) {
+    const suffix = String(
+      this.devHash(`${token}:${slot}`) % 10_000_000,
+    ).padStart(7, '0');
+    return `02${suffix}`;
+  }
+
+  private devRatio(input: string) {
+    return (this.devHash(input) % 10_000) / 10_000;
+  }
+
+  private devHash(input: string) {
+    let hash = 0;
+    for (const char of input) {
+      hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    }
+    return hash;
+  }
+
+  private clamp(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, value));
   }
 
   private toLicenseDto(license: MyLicenseRow) {
@@ -423,6 +738,8 @@ export class MyService {
   }
 
   private toJuristicLicenseGroupDto(membership: JuristicLicenseGroupRow) {
+    // TODO(schema): support License rows scoped directly to JuristicPerson.
+    const corporateLicenses: never[] = [];
     const businesses = membership.juristicPerson.businesses.map((business) => {
       const licenses = business.licenses.map((license) => ({
         id: license.id,
@@ -448,6 +765,11 @@ export class MyService {
       };
     });
 
+    const businessLicenseCount = businesses.reduce(
+      (total, business) => total + business.licenseCount,
+      0,
+    );
+
     return {
       juristicId: membership.juristicPersonId,
       nameTh: membership.juristicPerson.nameTh,
@@ -455,10 +777,10 @@ export class MyService {
       registrationId: membership.juristicPerson.registrationId,
       myRole: membership.role,
       businessCount: businesses.length,
-      licenseCount: businesses.reduce(
-        (total, business) => total + business.licenseCount,
-        0,
-      ),
+      corporateLicenseCount: corporateLicenses.length,
+      businessLicenseCount,
+      licenseCount: corporateLicenses.length + businessLicenseCount,
+      corporateLicenses,
       businesses,
     };
   }
@@ -482,6 +804,11 @@ export class MyService {
         (license) => license.status === LicenseStatus.REVOKED,
       ).length,
     };
+  }
+
+  private mockBusinessEmail(businessId: string) {
+    // MOCK: replace in UAT when Business has a persisted contact email field.
+    return `contact-${businessId.replace(/-/g, '').slice(0, 10)}@demo.elicense.local`;
   }
 
   private async ensureDevLicenseTypes(tx: Prisma.TransactionClient) {
@@ -598,6 +925,55 @@ export class MyService {
         nameTh: data.nameTh,
         juristicPersonId: data.juristicPersonId,
         ownerUserId: null,
+        address: data.address,
+        province: data.province,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        geocodedAt: new Date(),
+        phone: data.phone,
+      },
+    });
+  }
+
+  private async upsertPersonalDevBusiness(
+    tx: Prisma.TransactionClient,
+    data: {
+      ownerUserId: string;
+      nameTh: string;
+      address: string;
+      province: string;
+      latitude: Prisma.Decimal;
+      longitude: Prisma.Decimal;
+      phone: string;
+    },
+  ) {
+    const existing = await tx.business.findFirst({
+      where: {
+        nameTh: data.nameTh,
+        ownerUserId: data.ownerUserId,
+        juristicPersonId: null,
+        deletedAt: null,
+      },
+    });
+    if (existing) {
+      return tx.business.update({
+        where: { id: existing.id },
+        data: {
+          address: data.address,
+          province: data.province,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          geocodedAt: new Date(),
+          phone: data.phone,
+        },
+      });
+    }
+
+    return tx.business.create({
+      data: {
+        nameTh: data.nameTh,
+        ownerUserId: data.ownerUserId,
+        juristicPersonId: null,
         address: data.address,
         province: data.province,
         latitude: data.latitude,

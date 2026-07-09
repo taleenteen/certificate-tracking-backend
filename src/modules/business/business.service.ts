@@ -5,6 +5,7 @@ import { BusinessQueryDto, MapQueryDto } from './business.dto';
 import { buildLicenseOwnership } from '../license/license-ownership';
 
 const BUSINESS_LIST_INCLUDE = {
+  owner: { select: { fullName: true } },
   juristicPerson: { select: { nameTh: true, registrationId: true } },
   licenses: {
     where: { deletedAt: null },
@@ -13,6 +14,7 @@ const BUSINESS_LIST_INCLUDE = {
 } as const;
 
 const BUSINESS_DETAIL_INCLUDE = {
+  owner: { select: { fullName: true } },
   juristicPerson: { select: { nameTh: true, registrationId: true } },
   licenses: {
     where: { deletedAt: null, status: LicenseStatus.ACTIVE },
@@ -67,32 +69,38 @@ export class BusinessService {
         province: query.province,
         latitude: { not: null },
         longitude: { not: null },
-        licenses:
-          query.typeCode || query.status
-            ? {
-                some: {
-                  deletedAt: null,
-                  status: query.status,
-                  licenseType: query.typeCode
-                    ? { code: query.typeCode }
-                    : undefined,
-                },
-              }
-            : undefined,
+        licenses: {
+          some: {
+            deletedAt: null,
+            status: query.status,
+            licenseType: query.typeCode ? { code: query.typeCode } : undefined,
+          },
+        },
       },
       select: {
         id: true,
         nameTh: true,
+        address: true,
+        province: true,
         latitude: true,
         longitude: true,
+        ownerUserId: true,
+        juristicPersonId: true,
+        owner: { select: { fullName: true } },
+        juristicPerson: { select: { nameTh: true, registrationId: true } },
         licenses: {
           where: {
             deletedAt: null,
             status: query.status,
             licenseType: query.typeCode ? { code: query.typeCode } : undefined,
           },
-          select: { status: true },
-          take: 1,
+          select: {
+            id: true,
+            licenseNo: true,
+            status: true,
+            licenseType: { select: { code: true, nameTh: true } },
+          },
+          orderBy: { licenseNo: 'asc' },
         },
       },
     });
@@ -104,14 +112,96 @@ export class BusinessService {
           type: 'Point',
           coordinates: [Number(business.longitude), Number(business.latitude)],
         },
-        properties: {
-          id: business.id,
-          nameTh: business.nameTh,
-          lat: Number(business.latitude),
-          lng: Number(business.longitude),
-          licenseStatus: business.licenses[0]?.status ?? null,
-        },
+        properties: this.toMapProperties(business),
       })),
+    };
+  }
+
+  private toMapProperties(
+    business: Prisma.BusinessGetPayload<{
+      select: {
+        id: true;
+        nameTh: true;
+        address: true;
+        province: true;
+        latitude: true;
+        longitude: true;
+        ownerUserId: true;
+        juristicPersonId: true;
+        owner: { select: { fullName: true } };
+        juristicPerson: { select: { nameTh: true; registrationId: true } };
+        licenses: {
+          select: {
+            id: true;
+            licenseNo: true;
+            status: true;
+            licenseType: { select: { code: true; nameTh: true } };
+          };
+        };
+      };
+    }>,
+  ) {
+    const statusCounts = this.countLicenseStatuses(business.licenses);
+    const primaryLicense =
+      business.licenses.find(
+        (license) => license.status === LicenseStatus.ACTIVE,
+      ) ?? business.licenses[0];
+
+    return {
+      id: business.id,
+      nameTh: business.nameTh,
+      address: business.address,
+      province: business.province,
+      lat: Number(business.latitude),
+      lng: Number(business.longitude),
+      licenseCount: business.licenses.length,
+      licenseStatus: this.pickMapStatus(business.licenses),
+      primaryLicense: primaryLicense
+        ? {
+            id: primaryLicense.id,
+            licenseNo: primaryLicense.licenseNo,
+            status: primaryLicense.status,
+            typeCode: primaryLicense.licenseType.code,
+            typeNameTh: primaryLicense.licenseType.nameTh,
+          }
+        : null,
+      statusCounts,
+      ownership: buildLicenseOwnership(business),
+    };
+  }
+
+  private pickMapStatus(licenses: Array<{ status: LicenseStatus }>) {
+    const priority = [
+      LicenseStatus.SUSPENDED,
+      LicenseStatus.EXPIRED,
+      LicenseStatus.REVOKED,
+      LicenseStatus.PENDING,
+      LicenseStatus.ACTIVE,
+    ];
+    return (
+      priority.find((status) =>
+        licenses.some((license) => license.status === status),
+      ) ?? null
+    );
+  }
+
+  private countLicenseStatuses(licenses: Array<{ status: LicenseStatus }>) {
+    return {
+      active: licenses.filter(
+        (license) => license.status === LicenseStatus.ACTIVE,
+      ).length,
+      suspended: licenses.filter(
+        (license) => license.status === LicenseStatus.SUSPENDED,
+      ).length,
+      expired: licenses.filter(
+        (license) => license.status === LicenseStatus.EXPIRED,
+      ).length,
+      pending: licenses.filter(
+        (license) => license.status === LicenseStatus.PENDING,
+      ).length,
+      revoked: licenses.filter(
+        (license) => license.status === LicenseStatus.REVOKED,
+      ).length,
     };
   }
 
@@ -125,11 +215,17 @@ export class BusinessService {
       longitude: business.longitude,
       geocodedAt: business.geocodedAt,
       phone: business.phone,
+      email: this.mockBusinessEmail(business.id),
       deletedAt: business.deletedAt,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt,
       licenses: business.licenses,
       ownership: buildLicenseOwnership(business),
     };
+  }
+
+  private mockBusinessEmail(businessId: string) {
+    // MOCK: replace in UAT when Business has a persisted contact email field.
+    return `contact-${businessId.replace(/-/g, '').slice(0, 10)}@demo.elicense.local`;
   }
 }

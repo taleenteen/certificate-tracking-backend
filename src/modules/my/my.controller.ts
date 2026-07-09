@@ -62,6 +62,25 @@ export class MyController {
 
   @ApiOperation({
     summary:
+      '[DEV] Create complete personal and juristic demo data for current user',
+    description:
+      'Prototype-only helper that creates or updates one personal demo ' +
+      'business/license and one juristic demo company with realistic Thai ' +
+      'business coordinates and licenses. Idempotent per user; disabled when ' +
+      'NODE_ENV=production.',
+  })
+  @ApiOkResponse({
+    description:
+      'Created/updated complete demo data and returns personal/juristic ids.',
+  })
+  @ApiForbiddenResponse({ description: 'Disabled in production.' })
+  @Post('dev/seed-demo-data')
+  createDevDemoData(@CurrentUser() user: JwtClaims) {
+    return this.myService.createDevDemoData(user.sub);
+  }
+
+  @ApiOperation({
+    summary:
       '[DEV] Create juristic company demo data with licenses for current user',
     description:
       'Prototype-only helper for empty databases and frontend demos. Creates ' +

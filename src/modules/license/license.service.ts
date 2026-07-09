@@ -1,5 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { LicenseStatus, Prisma } from '@prisma/client';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { JuristicRole, LicenseStatus, Prisma } from '@prisma/client';
+import { JwtClaims } from '../../common/auth.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -289,12 +294,13 @@ export class LicenseService {
     };
   }
 
-  async updateStatus(id: string, dto: UpdateLicenseStatusDto) {
-    const exists = await this.prisma.license.findUnique({
+  async updateStatus(id: string, dto: UpdateLicenseStatusDto, user: JwtClaims) {
+    const exists = await this.prisma.license.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      include: { business: true },
     });
     if (!exists) throw new NotFoundException();
+    await this.assertNoLicenseConflict(user, exists);
     return this.prisma.license.update({
       where: { id },
       data: { status: dto.status as LicenseStatus },
@@ -362,5 +368,31 @@ export class LicenseService {
       latitude: business.latitude,
       longitude: business.longitude,
     };
+  }
+
+  private async assertNoLicenseConflict(
+    user: JwtClaims,
+    license: {
+      business: { ownerUserId: string | null; juristicPersonId: string | null };
+    },
+  ) {
+    if (license.business.ownerUserId === user.sub) {
+      throw new ConflictException('Officer has a conflict of interest');
+    }
+    if (!license.business.juristicPersonId) return;
+
+    const membership = await this.prisma.juristicMember.findFirst({
+      where: {
+        juristicPersonId: license.business.juristicPersonId,
+        userId: user.sub,
+        isActive: true,
+        // DECISION: OWNER and ADMIN can act for a company, so both are treated as conflicted reviewers.
+        role: { in: [JuristicRole.OWNER, JuristicRole.ADMIN] },
+      },
+      select: { id: true },
+    });
+    if (membership) {
+      throw new ConflictException('Officer has a conflict of interest');
+    }
   }
 }

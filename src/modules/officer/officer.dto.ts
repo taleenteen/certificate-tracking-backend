@@ -140,6 +140,18 @@ export class CreateOfficerInspectionDto {
   items!: CreateOfficerInspectionItemDto[];
 }
 
+export class UpdateOfficerInspectionItemDto {
+  /** Officer-written detail for this license item. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  detailNote?: string;
+
+  /** Flexible structured findings for UI form answers. */
+  @IsOptional()
+  findings?: unknown;
+}
+
 export class OfficerInspectionLogQueryDto extends PaginationDto {
   /** Filter by officer (uuid). */
   @IsOptional()

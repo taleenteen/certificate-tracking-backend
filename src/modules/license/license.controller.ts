@@ -11,6 +11,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -18,8 +19,10 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtClaims } from '../../common/auth.types';
 import {
   CreateLicenseTypeDto,
   PublicLicenseSearchDto,
@@ -118,9 +121,14 @@ export class LicenseController {
   @ApiParam({ name: 'id', description: 'License uuid', format: 'uuid' })
   @ApiOkResponse({ description: 'Updated license.' })
   @ApiNotFoundResponse({ description: 'License not found.' })
+  @ApiConflictResponse({ description: 'Conflict of interest.' })
   @Patch('licenses/:id/status')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateLicenseStatusDto) {
-    return this.licenses.updateStatus(id, dto);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateLicenseStatusDto,
+    @CurrentUser() user: JwtClaims,
+  ) {
+    return this.licenses.updateStatus(id, dto, user);
   }
 
   @Public()
