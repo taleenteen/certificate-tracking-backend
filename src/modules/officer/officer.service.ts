@@ -323,8 +323,8 @@ export class OfficerService {
       fileName: evidence.fileName,
       mimeType: evidence.mimeType,
       fileSizeBytes: evidence.fileSizeBytes,
-      url: await this.storage.presign(evidence.objectKey),
-      urlExpiresInSeconds: 600,
+      url: this.evidenceFilePath(inspectionId, evidence.id),
+      urlExpiresInSeconds: null,
     };
   }
 
@@ -770,12 +770,55 @@ export class OfficerService {
               mimeType: evidence.mimeType,
               fileSizeBytes: evidence.fileSizeBytes,
               createdAt: evidence.createdAt.toISOString(),
-              url: await this.storage.presign(evidence.objectKey),
-              urlExpiresInSeconds: 600,
+              // Same-origin API path (works on HTTPS sites via frontend BFF).
+              // Do NOT return raw MinIO http:// URLs — browsers block them as
+              // mixed content on https:// pages.
+              url: this.evidenceFilePath(inspection.id, evidence.id),
+              urlExpiresInSeconds: null,
             })),
           ),
         })),
       ),
+    };
+  }
+
+  /**
+   * Browser-safe evidence URL. Served by {@link getEvidenceFile} through the
+   * Nest API (and the Next BFF at the same `/api/...` path), so HTTPS frontends
+   * never embed plain-HTTP MinIO hosts.
+   */
+  private evidenceFilePath(inspectionId: string, evidenceId: string) {
+    return `/api/officer/inspections/${inspectionId}/evidence/${evidenceId}/file`;
+  }
+
+  async getEvidenceFile(
+    inspectionId: string,
+    evidenceId: string,
+    user: JwtClaims,
+  ): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
+    const evidence = await this.prisma.officerInspectionEvidence.findFirst({
+      where: {
+        id: evidenceId,
+        inspectionItem: {
+          inspectionId,
+          inspection: {
+            deletedAt: null,
+            officerId: isAdminTier(user.roles) ? undefined : user.sub,
+          },
+        },
+      },
+      select: {
+        fileName: true,
+        mimeType: true,
+        objectKey: true,
+      },
+    });
+    if (!evidence) throw new NotFoundException();
+    const buffer = await this.storage.download(evidence.objectKey);
+    return {
+      buffer,
+      mimeType: evidence.mimeType,
+      fileName: evidence.fileName,
     };
   }
 

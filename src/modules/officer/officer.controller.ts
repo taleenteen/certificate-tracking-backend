@@ -224,6 +224,47 @@ export class OfficerController {
 
   @Roles('officer')
   @ApiOperation({
+    summary: 'Stream one officer inspection evidence file',
+    description:
+      'Authenticated same-origin download for evidence images/PDFs. Prefer this ' +
+      'URL over MinIO presigned HTTP links on HTTPS frontends (avoids mixed content).',
+  })
+  @ApiParam({
+    name: 'inspectionId',
+    description: 'Inspection uuid',
+    format: 'uuid',
+  })
+  @ApiParam({
+    name: 'evidenceId',
+    description: 'Evidence uuid',
+    format: 'uuid',
+  })
+  @ApiOkResponse({ description: 'Binary file body.' })
+  @ApiNotFoundResponse({ description: 'Evidence not found.' })
+  @Get('officer/inspections/:inspectionId/evidence/:evidenceId/file')
+  async streamEvidenceFile(
+    @Param('inspectionId') inspectionId: string,
+    @Param('evidenceId') evidenceId: string,
+    @CurrentUser() user: JwtClaims,
+    @Res() response: Response,
+  ) {
+    const file = await this.officers.getEvidenceFile(
+      inspectionId,
+      evidenceId,
+      user,
+    );
+    response
+      .type(file.mimeType)
+      .setHeader('Cache-Control', 'private, max-age=300')
+      .setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(file.fileName)}"`,
+      )
+      .send(file.buffer);
+  }
+
+  @Roles('officer')
+  @ApiOperation({
     summary: 'Export an officer inspection',
     description:
       'Streams PDF or XLSX generated from stored report snapshots and records ' +
