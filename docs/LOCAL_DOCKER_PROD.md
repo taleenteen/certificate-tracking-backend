@@ -115,3 +115,29 @@ LOCAL_FRONTEND_PORT=3303 LOCAL_BACKEND_PORT=3301 LOCAL_DB_PORT=15432 LOCAL_MINIO
 
 When changing `LOCAL_MINIO_PORT`, browser-visible presigned evidence URLs use
 that same port through `MINIO_PUBLIC_ENDPOINT`.
+
+### Ubuntu / remote server: images show as broken (localhost URLs)
+
+Presigned evidence URLs are signed for **`MINIO_PUBLIC_ENDPOINT`**, which the
+browser must reach. On a remote host, `http://localhost:…` only works on that
+machine — phones/other PCs cannot load the image.
+
+In backend `.env` set the public host **and the published MinIO port** (same as
+`PRODUCTION_MINIO_PORT` if you remapped it):
+
+```bash
+# Example server 188.166.225.79, MinIO published on 19110
+MINIO_PUBLIC_ENDPOINT=http://188.166.225.79:19110
+PRODUCTION_MINIO_PORT=19110
+```
+
+Then recreate **backend only** (no DB reset, no re-upload of files):
+
+```bash
+sh scripts/production-stack.sh up
+# or: docker compose -f docker-compose.production.yml up -d --force-recreate backend
+```
+
+Also open the MinIO API port on the firewall (`ufw allow 19110/tcp` or your
+security group). New API responses will use the public host; existing object
+keys in MinIO stay unchanged.

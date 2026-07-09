@@ -14,8 +14,8 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class PublicLicenseSearchDto extends PaginationDto {
   /**
-   * Business / branch name search.
-   * @example โรงงาน
+   * Free-text search: business name, juristic name, or license number.
+   * @example สถานประกอบการตัวอย่าง
    */
   @IsOptional()
   @IsString()

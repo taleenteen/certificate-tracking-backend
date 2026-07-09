@@ -132,20 +132,102 @@ export class LicenseService {
     });
   }
 
-  async searchPublic(query: PublicLicenseSearchDto) {
-    const where: Prisma.LicenseWhereInput = {
+  /**
+   * Free-text `q` matches business name, juristic name, or license number
+   * (OR). Explicit `licenseNumber` still ANDs as a separate filter.
+   */
+  private publicSearchLicenseWhere(
+    query: PublicLicenseSearchDto,
+  ): Prisma.LicenseWhereInput {
+    const term = query.q?.trim();
+    const licenseNo = query.licenseNumber?.trim();
+    const base: Prisma.LicenseWhereInput = {
       deletedAt: null,
       status: query.status,
-      licenseNo: query.licenseNumber
-        ? { contains: query.licenseNumber, mode: 'insensitive' }
-        : undefined,
-      business: {
-        deletedAt: null,
-        nameTh: query.q
-          ? { contains: query.q, mode: 'insensitive' }
-          : undefined,
-      },
     };
+    if (licenseNo) {
+      base.licenseNo = { contains: licenseNo, mode: 'insensitive' };
+    }
+    if (!term) {
+      return {
+        ...base,
+        business: { deletedAt: null },
+      };
+    }
+    return {
+      ...base,
+      business: { deletedAt: null },
+      OR: [
+        { licenseNo: { contains: term, mode: 'insensitive' } },
+        { business: { nameTh: { contains: term, mode: 'insensitive' } } },
+        {
+          business: {
+            juristicPerson: {
+              nameTh: { contains: term, mode: 'insensitive' },
+            },
+          },
+        },
+      ],
+    };
+  }
+
+  private publicSearchBusinessWhere(
+    query: PublicLicenseSearchDto,
+  ): {
+    businessWhere: Prisma.BusinessWhereInput;
+    licenseWhere: Prisma.LicenseWhereInput;
+  } {
+    const term = query.q?.trim();
+    const licenseNo = query.licenseNumber?.trim();
+    const licenseWhere: Prisma.LicenseWhereInput = {
+      deletedAt: null,
+      status: query.status,
+      ...(licenseNo
+        ? { licenseNo: { contains: licenseNo, mode: 'insensitive' as const } }
+        : {}),
+    };
+
+    if (!term) {
+      return {
+        licenseWhere,
+        businessWhere: {
+          deletedAt: null,
+          licenses: { some: licenseWhere },
+        },
+      };
+    }
+
+    // Match business name, juristic name, or any license number under the
+    // business; nested licenses still apply the explicit licenseNumber filter.
+    const businessWhere: Prisma.BusinessWhereInput = {
+      deletedAt: null,
+      AND: [
+        { licenses: { some: licenseWhere } },
+        {
+          OR: [
+            { nameTh: { contains: term, mode: 'insensitive' } },
+            {
+              juristicPerson: {
+                nameTh: { contains: term, mode: 'insensitive' },
+              },
+            },
+            {
+              licenses: {
+                some: {
+                  ...licenseWhere,
+                  licenseNo: { contains: term, mode: 'insensitive' },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    return { businessWhere, licenseWhere };
+  }
+
+  async searchPublic(query: PublicLicenseSearchDto) {
+    const where = this.publicSearchLicenseWhere(query);
     const [data, total] = await this.prisma.$transaction(async (tx) => {
       const data = await tx.license.findMany({
         where,
@@ -200,18 +282,8 @@ export class LicenseService {
   }
 
   async searchPublicGroupedByBusiness(query: PublicLicenseSearchDto) {
-    const licenseWhere: Prisma.LicenseWhereInput = {
-      deletedAt: null,
-      status: query.status,
-      licenseNo: query.licenseNumber
-        ? { contains: query.licenseNumber, mode: 'insensitive' }
-        : undefined,
-    };
-    const where: Prisma.BusinessWhereInput = {
-      deletedAt: null,
-      nameTh: query.q ? { contains: query.q, mode: 'insensitive' } : undefined,
-      licenses: { some: licenseWhere },
-    };
+    const { businessWhere: where, licenseWhere } =
+      this.publicSearchBusinessWhere(query);
     const [businesses, total] = await this.prisma.$transaction(async (tx) => {
       const businesses = await tx.business.findMany({
         where,

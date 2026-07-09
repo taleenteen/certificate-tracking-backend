@@ -69,8 +69,13 @@ services:
       APP_ORIGIN: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
       ADMIN_ORIGIN: http://localhost:${PRODUCTION_FRONTEND_PORT:-3003}
       PUBLIC_API_BASE_URL: http://localhost:${PRODUCTION_BACKEND_PORT:-3001}/api
+      # Internal Docker network name for upload/delete.
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_PUBLIC_ENDPOINT: http://localhost:${PRODUCTION_MINIO_PORT:-9000}
+      # Browser-facing host for presigned evidence URLs. MUST be reachable from
+      # client devices (not localhost on a remote Ubuntu host). Set in backend .env:
+      #   MINIO_PUBLIC_ENDPOINT=http://<server-ip-or-dns>:${PRODUCTION_MINIO_PORT}
+      # Default keeps local prototype behavior.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:${PRODUCTION_MINIO_PORT:-9000}}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-elicense}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in backend .env}
       TOTP_BYPASS: "true"
