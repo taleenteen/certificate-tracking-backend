@@ -25,7 +25,8 @@ RUN npx prisma generate && npm run build
 FROM node:20-alpine AS production
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
-RUN apk add --no-cache font-noto-thai
+# Optional system fonts; primary PDF fonts are bundled Sarabun under src/assets/fonts/
+RUN apk add --no-cache fontconfig
 RUN addgroup -S app && adduser -S app -G app
 # Copy everything including devDeps so entrypoint has prisma + ts-node for seed
 COPY --from=build --chown=app:app /usr/src/app/node_modules ./node_modules
@@ -36,7 +37,11 @@ COPY --from=build --chown=app:app /usr/src/app/package.json ./package.json
 COPY --from=build --chown=app:app /usr/src/app/prisma.config.ts ./prisma.config.ts
 COPY --from=build --chown=app:app /usr/src/app/tsconfig.json ./tsconfig.json
 COPY --chown=app:app docker-entrypoint.prod.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+  && test -f src/assets/fonts/Sarabun-Regular.ttf \
+  && test -f src/assets/fonts/Sarabun-Bold.ttf \
+  && test -f dist/assets/fonts/Sarabun-Regular.ttf \
+  && test -f dist/assets/fonts/Sarabun-Bold.ttf
 USER app
 EXPOSE 3001
 ENTRYPOINT ["docker-entrypoint.sh"]

@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -66,6 +67,8 @@ type OfficerInspectionListRow = Prisma.OfficerInspectionGetPayload<{
 
 @Injectable()
 export class OfficerService {
+  private readonly logger = new Logger(OfficerService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
@@ -899,11 +902,19 @@ export class OfficerService {
     });
 
     const fonts = this.pdfFontPaths();
-    const regularFont = fonts ? 'NotoSansThai' : 'Helvetica';
-    const boldFont = fonts ? 'NotoSansThai-Bold' : 'Helvetica-Bold';
+    // Sarabun covers Thai + Latin/digits. NotoSansThai-only TTFs omit ASCII → □ for
+    // license numbers (RNG4-00001) and mixed fields on every platform.
+    const regularFont = fonts ? 'Sarabun' : 'Helvetica';
+    const boldFont = fonts ? 'Sarabun-Bold' : 'Helvetica-Bold';
     if (fonts) {
       document.registerFont(regularFont, fonts.regular);
       document.registerFont(boldFont, fonts.bold);
+      this.logger.debug(`PDF fonts: regular=${fonts.regular} bold=${fonts.bold}`);
+    } else {
+      this.logger.warn(
+        'No valid Thai+Latin font found for PDF export; using Helvetica (Thai/data may be □). ' +
+          'Ensure Sarabun-Regular.ttf / Sarabun-Bold.ttf under src/assets/fonts.',
+      );
     }
 
     // Helper to format date
@@ -1095,10 +1106,22 @@ export class OfficerService {
     return user.agencyId;
   }
 
-  private pdfFontPaths() {
+  /**
+   * Resolve fonts that cover **both Thai and Latin/digits** for PDFKit.
+   * Prefer bundled Sarabun. Do not prefer NotoSansThai-only TTFs — they omit
+   * ASCII digits so fields like license numbers render as □.
+   */
+  private pdfFontPaths(): { regular: string; bold: string } | null {
+    const cwd = process.cwd();
+    // dist/modules/officer → dist/assets/fonts (nest-cli assets copy)
+    const fromCompiled = resolve(__dirname, '..', '..', 'assets', 'fonts');
     const regular = this.firstValidFontPath([
-      resolve(process.cwd(), 'src/assets/fonts/NotoSansThai-Regular.ttf'),
-      '/usr/share/fonts/noto/NotoSansThai-Regular.ttf',
+      resolve(cwd, 'src/assets/fonts/Sarabun-Regular.ttf'),
+      resolve(cwd, 'dist/assets/fonts/Sarabun-Regular.ttf'),
+      resolve(fromCompiled, 'Sarabun-Regular.ttf'),
+      // Full Unicode fallbacks (Thai + Latin) — local / optional system install
+      '/usr/share/fonts/truetype/tlwg/TlwgTypewriter.ttf',
+      '/usr/share/fonts/truetype/sarabun/Sarabun-Regular.ttf',
       '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
       '/Library/Fonts/Arial Unicode.ttf',
       '/System/Library/Fonts/Supplemental/Thonburi.ttc',
@@ -1106,14 +1129,18 @@ export class OfficerService {
     ]);
     const bold =
       this.firstValidFontPath([
-        resolve(process.cwd(), 'src/assets/fonts/NotoSansThai-Bold.ttf'),
-        '/usr/share/fonts/noto/NotoSansThai-Bold.ttf',
+        resolve(cwd, 'src/assets/fonts/Sarabun-Bold.ttf'),
+        resolve(cwd, 'dist/assets/fonts/Sarabun-Bold.ttf'),
+        resolve(fromCompiled, 'Sarabun-Bold.ttf'),
+        '/usr/share/fonts/truetype/sarabun/Sarabun-Bold.ttf',
         '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
         '/Library/Fonts/Arial Unicode.ttf',
         '/System/Library/Fonts/Supplemental/Thonburi.ttc',
         '/System/Library/Fonts/ThonburiUI.ttc',
       ]) ?? regular;
-    if (!regular || !bold) return null;
+    if (!regular || !bold) {
+      return null;
+    }
     return { regular, bold };
   }
 
@@ -1123,8 +1150,13 @@ export class OfficerService {
 
   private isValidFontFile(path: string) {
     if (!existsSync(path)) return false;
-    const header = readFileSync(path).subarray(0, 4).toString('hex');
-    return FONT_MAGIC_HEADERS.includes(header);
+    try {
+      const header = readFileSync(path).subarray(0, 4).toString('hex');
+      // Reject HTML/error downloads that were previously committed as fake .ttf
+      return FONT_MAGIC_HEADERS.includes(header);
+    } catch {
+      return false;
+    }
   }
 
   private findDuplicate(values: string[]) {

@@ -14,6 +14,16 @@
 
 ## 0. Change Log
 
+- **2026-07-10 (PDF fonts: Sarabun Thai+Latin)** — First font fix still left data
+  fields unreadable: `NotoSansThai-*.ttf` is Thai-script-only, so PDFKit drew
+  □ / missing glyphs for Latin and digits (`DIW`, `RNG4-00001`, license nos).
+  Replaced bundled fonts with **Sarabun Regular/Bold** (Thai + Latin), updated
+  `pdfFontPaths` / Dockerfile checks, and verified PDF text extraction contains
+  full Thai strings and ASCII license numbers with no null glyphs.
+- **2026-07-10 (PDF Thai fonts bundled for Ubuntu)** — Officer inspection PDF
+  export showed □ boxes on Ubuntu/Docker because Helvetica has no Thai glyphs
+  and `src/assets/fonts/` was empty. (Superseded by Sarabun fix above for
+  mixed Thai+Latin fields.)
 - **2026-07-09 (juristic license tab and officer conflict guardrails)** —
   Refactored the juristic license response contract to expose
   `corporateLicenses` separately from premise/business licenses while leaving a
