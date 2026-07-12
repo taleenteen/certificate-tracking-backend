@@ -7,6 +7,7 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -17,8 +18,10 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -145,6 +148,36 @@ export class LicenseController {
   @Get('licenses/:id')
   findOne(@Param('id') id: string) {
     return this.licenses.findOne(id);
+  }
+
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Public()
+  @ApiOperation({
+    summary: 'Stream license certificate PDF (same-origin preview)',
+    description:
+      'Streams the first LICENSE_CERTIFICATE PDF for browser preview (pdf.js). ' +
+      'Prefer this over MinIO presigned HTTP URLs to avoid CORS and mixed-content blocks.',
+  })
+  @ApiParam({ name: 'id', description: 'License uuid', format: 'uuid' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ description: 'Binary PDF body.' })
+  @ApiNotFoundResponse({ description: 'License or certificate not found.' })
+  @Get('licenses/:id/certificate')
+  async streamCertificate(
+    @Param('id') id: string,
+    @Res() response: Response,
+  ) {
+    const file = await this.licenses.getCertificateFile(id);
+    response
+      .type(file.mimeType)
+      .setHeader('Cache-Control', 'private, max-age=120')
+      .setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(file.fileName)}"`,
+      )
+      // Allow pdf.js / canvas consumers on any frontend origin via BFF.
+      .setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+      .send(file.buffer);
   }
 
   @Throttle({ default: { limit: 60, ttl: 60_000 } })

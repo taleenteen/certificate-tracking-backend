@@ -492,6 +492,38 @@ export class LicenseService {
     return document ? this.storage.presign(document.objectKey) : null;
   }
 
+  /**
+   * Stream the first LICENSE_CERTIFICATE PDF for same-origin browser preview.
+   * Prefer this over MinIO presigned URLs so pdf.js does not hit CORS / mixed-content.
+   */
+  async getCertificateFile(id: string) {
+    const license = await this.prisma.license.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        documents: {
+          where: { docType: 'LICENSE_CERTIFICATE' },
+          select: {
+            objectKey: true,
+            fileName: true,
+            mimeType: true,
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
+      },
+    });
+    const document = license?.documents[0];
+    if (!document) throw new NotFoundException('Certificate document not found');
+
+    const buffer = await this.storage.download(document.objectKey);
+    return {
+      buffer,
+      fileName: document.fileName,
+      mimeType: document.mimeType || 'application/pdf',
+    };
+  }
+
   private async assertNoLicenseConflict(
     user: JwtClaims,
     license: {
