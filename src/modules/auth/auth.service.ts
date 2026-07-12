@@ -363,6 +363,10 @@ export class AuthService {
     },
     metadata: RequestMetadata,
   ) {
+    dto.username = dto.username.trim().toLowerCase();
+    dto.email = dto.email.trim().toLowerCase();
+    dto.fullName = dto.fullName.trim();
+    dto.phone = dto.phone?.trim();
     const existing = await this.prisma.systemUser.findUnique({
       where: { username: dto.username },
       select: { id: true },
@@ -438,6 +442,7 @@ export class AuthService {
     password: string,
     metadata: RequestMetadata,
   ) {
+    username = username.trim().toLowerCase();
     // Accept username or email — users often type their email in the login box.
     const user = await this.prisma.systemUser.findFirst({
       where: { OR: [{ username }, { email: username }], deletedAt: null },
@@ -741,6 +746,7 @@ export class AuthService {
     totpCode: string,
     metadata: RequestMetadata,
   ) {
+    username = username.trim().toLowerCase();
     const user = await this.prisma.systemUser.findUnique({
       where: { username },
     });
@@ -932,6 +938,7 @@ export class AuthService {
   }
 
   async forgotPassword(username: string, ipAddress?: string) {
+    username = username.trim().toLowerCase();
     const user = await this.prisma.systemUser.findUnique({
       where: { username },
     });

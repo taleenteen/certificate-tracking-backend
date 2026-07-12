@@ -14,6 +14,25 @@
 
 ## 0. Change Log
 
+- **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
+  minimum heights now account for the mobile navbar using `100dvh`, preventing
+  an extra blank viewport on short pages. Mobile inputs/selects/textareas use
+  a minimum 16px font size to prevent iOS focus zoom without disabling browser
+  zoom. Username/email values are trimmed and lowercased in auth and user
+  management UI plus backend request/service boundaries; free-text search,
+  passwords, OTPs, and display names retain their original casing semantics.
+
+- **2026-07-12 (external license QR navigation)** — License QR scan entry
+  points now validate and open the encoded HTTP(S) URL in a new browser tab,
+  without resolving it through the platform's license lookup. Officer identity
+  QR verification remains on its separate internal flow.
+
+- **2026-07-12 (establishment export page UI)** — The officer establishment
+  export banner now opens a dedicated `businesses/:businessId/exports` page.
+  It provides an establishment summary, an all-license PDF export action, and
+  a collapsible list with an outlined green export action for each license,
+  while reusing the logged export endpoint.
+
 - **2026-07-12 (license card PDF previews)** — License list, grouped search,
   and business-detail responses now include a 10-minute presigned URL for each
   license's first `LICENSE_CERTIFICATE` document. The shared Next.js license

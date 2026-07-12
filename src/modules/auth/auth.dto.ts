@@ -10,6 +10,13 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+const normalizeIdentity = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
+
+const trimText = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 // ───────────────────────── Requests ─────────────────────────
 
@@ -20,6 +27,7 @@ export class RegisterDto {
    */
   @IsString()
   @Length(3, 50)
+  @Transform(normalizeIdentity)
   @Matches(/^[a-zA-Z0-9._-]+$/, {
     message:
       'username may contain only letters, digits, dot, underscore, hyphen',
@@ -32,6 +40,7 @@ export class RegisterDto {
    */
   @IsEmail()
   @MaxLength(150)
+  @Transform(normalizeIdentity)
   email!: string;
 
   /**
@@ -51,6 +60,7 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
+  @Transform(trimText)
   fullName!: string;
 
   /**
@@ -60,6 +70,7 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   @MaxLength(20)
+  @Transform(trimText)
   phone?: string;
 }
 
@@ -70,6 +81,7 @@ export class LoginDto {
    */
   @IsString()
   @IsNotEmpty()
+  @Transform(normalizeIdentity)
   username!: string;
 
   /**
@@ -144,6 +156,7 @@ export class SelfLoginDto {
    */
   @IsString()
   @IsNotEmpty()
+  @Transform(normalizeIdentity)
   username!: string;
 
   /**
@@ -191,6 +204,7 @@ export class ForgotPasswordDto {
    */
   @IsString()
   @IsNotEmpty()
+  @Transform(normalizeIdentity)
   username!: string;
 }
 
@@ -205,6 +219,7 @@ export class ResetPasswordDto extends ChangePasswordDto {
   /** Optional username hint. */
   @IsOptional()
   @IsString()
+  @Transform(normalizeIdentity)
   username?: string;
 }
 

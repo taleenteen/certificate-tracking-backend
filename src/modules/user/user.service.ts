@@ -65,6 +65,10 @@ export class UserService {
   }
 
   async create(dto: CreateUserDto, actor?: JwtClaims) {
+    dto.fullName = dto.fullName.trim();
+    dto.username = dto.username?.trim().toLowerCase();
+    dto.email = dto.email?.trim().toLowerCase();
+    dto.phone = dto.phone?.trim();
     for (const role of dto.roles) {
       if (!actor || !canGrantRole(actor.roles, role)) {
         throw new ForbiddenException(`Not allowed to grant role: ${role}`);

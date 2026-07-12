@@ -9,6 +9,13 @@ import {
   IsUUID,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+const normalizeIdentity = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
+
+const trimText = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class UserQueryDto {
   /** Filter by role. */
@@ -33,21 +40,25 @@ export class CreateUserDto {
    * @example สมชาย ใจดี
    */
   @IsString()
+  @Transform(trimText)
   fullName!: string;
 
   /** Username for self-login users (optional for mToken users). */
   @IsOptional()
   @IsString()
+  @Transform(normalizeIdentity)
   username?: string;
 
   /** Contact email. */
   @IsOptional()
   @IsEmail()
+  @Transform(normalizeIdentity)
   email?: string;
 
   /** Contact phone. */
   @IsOptional()
   @IsString()
+  @Transform(trimText)
   phone?: string;
 
   /**
