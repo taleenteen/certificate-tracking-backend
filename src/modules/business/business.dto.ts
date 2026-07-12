@@ -21,6 +21,14 @@ export class BusinessQueryDto extends PaginationDto {
 }
 
 export class MapQueryDto {
+  /**
+   * Case-insensitive search on Thai business name or address.
+   * @example โรงงาน
+   */
+  @IsOptional()
+  @IsString()
+  q?: string;
+
   /** Filter by province (Thai). */
   @IsOptional()
   @IsString()

@@ -85,12 +85,21 @@ export class BusinessService {
   }
 
   async map(query: MapQueryDto) {
+    const search = query.q?.trim();
     const businesses = await this.prisma.business.findMany({
       where: {
         deletedAt: null,
         province: query.province,
         latitude: { not: null },
         longitude: { not: null },
+        ...(search
+          ? {
+              OR: [
+                { nameTh: { contains: search, mode: 'insensitive' } },
+                { address: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
         licenses: {
           some: {
             deletedAt: null,

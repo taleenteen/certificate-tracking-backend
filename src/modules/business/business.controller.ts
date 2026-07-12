@@ -33,8 +33,8 @@ export class BusinessController {
     summary: 'Businesses as a GeoJSON map layer',
     description:
       'Returns a GeoJSON FeatureCollection (Point features) filtered by ' +
-      'province / license type code / status. Rows without coordinates are ' +
-      'excluded.',
+      'text search (name/address), province / license type code / status. ' +
+      'Rows without coordinates are excluded.',
   })
   @ApiOkResponse({ description: 'GeoJSON FeatureCollection.' })
   @Get('map')
