@@ -166,6 +166,7 @@ model SystemUser {
   officerInspections OfficerInspection[] @relation("OfficerInspectionOfficer")
   officerInspectionEvidence OfficerInspectionEvidence[] @relation("OfficerInspectionEvidenceUploader")
   officerProfileScans OfficerPublicProfileScanLog[] @relation("OfficerProfileScanOfficer")
+  licenseDocumentExports LicenseDocumentExport[] @relation("LicenseDocumentExportedBy")
   auditLogs       AuditLog[]
   notifications   Notification[]
   syncLogs        SyncLog[]
@@ -199,6 +200,7 @@ model Agency {
   licenseTypes LicenseType[]
   syncLogs     SyncLog[]
   officerInspections OfficerInspection[]
+  licenseDocumentExports LicenseDocumentExport[]
 
   @@map("agencies")
 }
@@ -280,6 +282,7 @@ model JuristicPerson {
   invites      JuristicInvite[]
   joinRequests JuristicJoinRequest[]
   businesses   Business[]
+  licenses     License[]
   officerInspections OfficerInspection[]
 
   @@map("juristic_persons")
@@ -376,6 +379,7 @@ model Business {
   licenses       License[]
   tasks          InspectionTask[]
   officerInspections OfficerInspection[]
+  licenseDocumentExports LicenseDocumentExport[]
 
   @@index([province])
   @@map("businesses")
@@ -408,7 +412,8 @@ model LicenseType {
 model License {
   id               String        @id @default(uuid()) @db.Uuid
   licenseNo        String        @unique @map("license_no") @db.VarChar(50)
-  businessId       String        @map("business_id") @db.Uuid
+  businessId       String?       @map("business_id") @db.Uuid
+  juristicPersonId String?       @map("juristic_person_id") @db.Uuid
   licenseTypeId    String        @map("license_type_id") @db.Uuid
   status           LicenseStatus @default(ACTIVE)
   issueDate        DateTime      @map("issue_date") @db.Date
@@ -420,15 +425,18 @@ model License {
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
 
-  business    Business    @relation(fields: [businessId], references: [id])
-  licenseType LicenseType @relation(fields: [licenseTypeId], references: [id])
+  business        Business?       @relation(fields: [businessId], references: [id])
+  juristicPerson  JuristicPerson? @relation(fields: [juristicPersonId], references: [id])
+  licenseType     LicenseType     @relation(fields: [licenseTypeId], references: [id])
   renewedFrom License?    @relation("RenewalChain", fields: [renewedFromId], references: [id])
   renewals    License[]   @relation("RenewalChain")
   documents   LicenseDocument[]
   tasks       InspectionTask[]
   officerInspectionItems OfficerInspectionItem[]
+  documentExportItems LicenseDocumentExportItem[]
 
   @@index([businessId])
+  @@index([juristicPersonId])
   @@index([licenseTypeId])
   @@index([status, expireDate])
   @@map("licenses")
@@ -448,10 +456,73 @@ model LicenseDocument {
 
   license          License?          @relation(fields: [licenseId], references: [id])
   inspectionReport InspectionReport? @relation(fields: [inspectionReportId], references: [id])
+  documentExportItems LicenseDocumentExportItem[]
 
   @@index([licenseId])
   @@index([inspectionReportId])
   @@map("license_documents")
+}
+
+enum LicenseDocumentExportFormat {
+  PDF
+  XLSX
+  CSV
+}
+
+enum LicenseDocumentExportStatus {
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+model LicenseDocumentExport {
+  id               String                      @id @default(uuid()) @db.Uuid
+  referenceNo      String                      @unique @map("reference_no") @db.VarChar(40)
+  verificationCode String                      @unique @map("verification_code") @db.VarChar(64)
+  businessId       String                      @map("business_id") @db.Uuid
+  exportedByUserId String                      @map("exported_by_user_id") @db.Uuid
+  agencyId         String                      @map("agency_id") @db.Uuid
+  format           LicenseDocumentExportFormat
+  status           LicenseDocumentExportStatus @default(GENERATING)
+  sourcePlatform   String                      @default("E_LICENSE") @map("source_platform") @db.VarChar(40)
+  fileName         String?                     @map("file_name") @db.VarChar(255)
+  objectKey        String?                     @map("object_key") @db.VarChar(500)
+  fileSizeBytes    Int?                        @map("file_size_bytes")
+  sha256           String?                     @db.VarChar(64)
+  contentSnapshot  Json                        @map("content_snapshot")
+  errorMessage     String?                     @map("error_message") @db.Text
+  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz()
+  completedAt      DateTime?                   @map("completed_at") @db.Timestamptz()
+
+  business       Business                     @relation(fields: [businessId], references: [id])
+  exportedByUser SystemUser                   @relation("LicenseDocumentExportedBy", fields: [exportedByUserId], references: [id])
+  agency         Agency                       @relation(fields: [agencyId], references: [id])
+  items          LicenseDocumentExportItem[]
+
+  @@index([businessId, createdAt])
+  @@index([exportedByUserId, createdAt])
+  @@index([agencyId, createdAt])
+  @@map("license_document_exports")
+}
+
+model LicenseDocumentExportItem {
+  id                 String                @id @default(uuid()) @db.Uuid
+  exportId           String                @map("export_id") @db.Uuid
+  licenseId          String                @map("license_id") @db.Uuid
+  licenseDocumentId  String?               @map("license_document_id") @db.Uuid
+  sequence           Int
+  licenseNoSnapshot  String                @map("license_no_snapshot") @db.VarChar(50)
+  licenseTypeSnapshot Json                 @map("license_type_snapshot")
+  documentSnapshot   Json?                 @map("document_snapshot")
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz()
+
+  export          LicenseDocumentExport @relation(fields: [exportId], references: [id], onDelete: Cascade)
+  license         License               @relation(fields: [licenseId], references: [id])
+  licenseDocument LicenseDocument?      @relation(fields: [licenseDocumentId], references: [id])
+
+  @@index([exportId, sequence])
+  @@index([licenseId])
+  @@map("license_document_export_items")
 }
 
 model ChecklistTemplate {

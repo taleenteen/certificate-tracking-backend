@@ -14,6 +14,82 @@
 
 ## 0. Change Log
 
+- **2026-07-12 (license card PDF previews)** — License list, grouped search,
+  and business-detail responses now include a 10-minute presigned URL for each
+  license's first `LICENSE_CERTIFICATE` document. The shared Next.js license
+  card renders page 1 of that PDF with PDF.js and retains the mock image only
+  when no certificate document exists or rendering fails.
+
+- **2026-07-12 (direct corporate licenses)** — Owner-approved migration
+  `20260712010000_corporate_license_scope` lets `License` belong directly to a
+  `JuristicPerson` or to a `Business`, with a database check constraint that
+  requires exactly one subject. Juristic license groups now return real
+  `corporateLicenses`. The user mock generator creates two document-linked
+  corporate licenses for its demo company; expiry notifications include active
+  corporate members.
+
+- **2026-07-12 (user-owned mock license generator)** — Reworked the My Licenses
+  demo-data generator to use the curated seeded certificate catalog as immutable
+  templates. It creates user-owned personal and juristic businesses, copies
+  license metadata and private MinIO document references, and offsets source
+  coordinates slightly to avoid stacked e-Map pins. Selection is deterministic
+  per user and reruns are idempotent. Prototype production can explicitly allow
+  it with `DEMO_DATA_ENABLED=true`.
+
+- **2026-07-12 (source-linked license export PDF)** — Reworked PDF export into
+  a Thai government-style report: a business/owner/contact cover headed
+  `รายงานผลการตรวจสอบใบอนุญาต`, then a formal summary page before each
+  selected license's source document. Metadata includes Bangkok issue date/time,
+  reference, and `e-license` source. Actual MinIO source PDFs are appended
+  page-for-page after their corresponding summary; PNG/JPEG source documents
+  are embedded as pages. Removed the bundled mock certificate from this flow.
+
+- **2026-07-12 (unrestricted officer document exports)** — Removed the
+  inspection/approval conflict-of-interest rule from license-document export.
+  Export is a logged document-distribution action, not a review decision; any
+  officer may export any establishment's license document. Verification and
+  approval conflict guards remain in place.
+
+- **2026-07-12 (Tang Rat staff promotion and portal-only admin sign-in)** —
+  Added `PATCH /api/users/:id/access` for super_admin to assign role and
+  agency atomically. Officer assignment requires an active agency and revokes
+  all existing sessions, so the next Tang Rat sign-in receives the new scoped
+  JWT. Added user-list identity provenance for the back-office UI and an e2e
+  flow covering public Tang Rat user → officer promotion → re-authentication.
+
+- **2026-07-12 (certificate asset inspection pipeline)** — Added
+  `npm run certificates:inspect` to scan every PDF under `src/assets/pdf/`,
+  validate canonical certificate profiles, and emit a compact page/hash/field
+  report. `--write-stubs` creates profile stubs for newly added files; `--strict`
+  fails CI when a PDF is unconfigured.
+
+- **2026-07-11 (business detail license status parity)** — `GET /api/businesses/:id`
+  now returns every non-deleted license, including expired, suspended, revoked,
+  and pending entries, matching grouped license search behavior.
+
+- **2026-07-11 (curated certificate seed data)** — Replaced generic document
+  examples with twelve real-form mock licenses across DIW RNG4, DIW HAZMAT,
+  and ACFS producer/exporter/importer certificates. Seed now uploads every
+  source PDF under `src/assets/pdf/` into private MinIO and creates one
+  `LICENSE_CERTIFICATE` document per curated license.
+
+- **2026-07-11 (single-license officer export PDF)** — License detail now uses
+  the same verifiable export workflow for one license. The PDF title is
+  `รายงานข้อมูลใบอนุญาต`; its header carries the export reference and
+  `E-LICENSE` source platform, and it includes the bundled mock certificate as
+  a full-page image until issued certificate media is available.
+
+- **2026-07-11 (verifiable establishment license-document exports)** — Added
+  officer-only export of selected establishment licenses to PDF, XLSX, or CSV.
+  PDF embeds supported image documents, appends supported source PDFs, and
+  carries a QR verification URL; XLSX/CSV provide structured license/document
+  data. Added immutable `LicenseDocumentExport` and item records with a content
+  snapshot, SHA-256 checksum, private MinIO object key, opaque verification
+  code, completion/failure state, and explicit `EXPORT` / `EXPORT_FAILED`
+  audit rows. `GET /api/public/license-document-exports/:verificationCode`
+  verifies origin without exposing the private file. The schema policy now
+  requires owner approval plus a migration rather than forbidding all changes.
+
 - **2026-07-10 (PDF fonts: Sarabun Thai+Latin)** — First font fix still left data
   fields unreadable: `NotoSansThai-*.ttf` is Thai-script-only, so PDFKit drew
   □ / missing glyphs for Latin and digits (`DIW`, `RNG4-00001`, license nos).
@@ -73,7 +149,7 @@
   to use explicit async/await for direct `pg` access. Verified build, lint,
   unit tests, e2e tests, and a rebuilt local-prod backend container restart;
   the previous `Calling client.query() when the client is already executing a
-  query` warning no longer appears in fresh Docker logs.
+query` warning no longer appears in fresh Docker logs.
 - **2026-07-08 (prototype production compose alignment)** — Replaced
   `docker-compose.production.yml` with a production-named version of the
   verified local prototype stack. It now uses backend `.env` plus frontend
@@ -112,7 +188,7 @@
   export audit persistence to a sequential transaction to avoid pg query overlap
   warnings on export.
 - **2026-07-08 (officer inspection report list)** — Added `GET
-  /api/officer/inspections` for the logged-in officer's own submitted field
+/api/officer/inspections` for the logged-in officer's own submitted field
   reports, shared the list response shape with admin officer logs, and normalized
   plain date filters so `dateTo=YYYY-MM-DD` includes the full day. Updated the
   officer reporting frontend handoff contract.
@@ -165,7 +241,7 @@
   provider unit coverage. Added `RealDgaOidcProvider` behind `DGA_OIDC_MODE=real`
   for UAT/Production token and UserInfo calls.
 - **2026-07-02 (legacy officer result payload tolerance)** — `POST
-  /api/officer/inspections` now accepts a legacy `items[].result` field without
+/api/officer/inspections` now accepts a legacy `items[].result` field without
   enum validation and ignores it, so old frontend forms that still include
   pass/fail state do not block submission. Added DTO validation coverage for
   this compatibility path.
@@ -263,9 +339,10 @@
   ADMIN on company[1]. Verified: `npm run build`, `npm test` (22/22 pass),
   `npm run swagger:export` (no warnings).
 
-- **2026-06-15 (D5 — Profile & Tang Rat-prioritized identity binding super-plan)** — Phases 1-5: ... + **owner decision: plaintext citizen ID** in citizenId column (searchability + gov integration via TDE + RBAC + audit, **not** hashing). 
+- **2026-06-15 (D5 — Profile & Tang Rat-prioritized identity binding super-plan)** — Phases 1-5: ... + **owner decision: plaintext citizen ID** in citizenId column (searchability + gov integration via TDE + RBAC + audit, **not** hashing).
 
   **DBA confusion concern addressed + Golden Rule exception exercised**: User explicitly said "i let you break the rule for this time to make schema is better". We renamed citizenIdHash → citizenId (column to citizen_id) with proper migration. Old name was confusing for DB officers. Schema now clean. Heavy comments + plan updated. All verification (lint/build/units 22/22, e2e) green. (6 + 7 + 8 remain.)
+
 - **2026-06-15 (public self-registration + password login)** — Added public
   sign-up: `POST /api/auth/register` (username/email/password → `public` role,
   bcrypt cost 12, auto-login) and `POST /api/auth/login` (password login for
@@ -375,18 +452,18 @@ Infrastructure currently present:
 
 ### P0: Scaffold, Database, Migration, Seed
 
-| Requirement                      | Status       | Evidence / Notes                                                                                           |
-| -------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| Monorepo scaffold                | `PARTIAL`    | Backend exists at root; `api/`, `app/`, and `admin/` monorepo layout is not present.                       |
-| PostgreSQL 16 Compose service    | `DONE`       | `docker-compose.yml`                                                                                       |
-| MinIO Compose service            | `DONE`       | `docker-compose.yml`                                                                                       |
-| Exact 17-table Prisma data model | `DONE`       | `prisma/schema.prisma` validates successfully.                                                             |
-| Initial migration                | `DONE`       | `prisma/migrations/20260612000000_init/migration.sql`                                                      |
-| Mock seed                        | `DONE`       | Counts verified live 2026-06-15: 8 users / 6 zones / 20 businesses / 30 licenses (22/4/4) / 5 types / 10 tasks / 7 reports; 0 RNG4 with expire_date. |
-| Run migration                    | `DONE`       | `prisma migrate deploy` applied `20260612000000_init` against live Postgres 16. |
-| Run seed                         | `DONE`       | `ts-node prisma/seed.ts` executed successfully against Postgres.               |
-| Verify seed data                 | `DONE`       | Verified via direct SQL counts (Prisma Studio not needed).                     |
-| Clean-clone Compose startup      | `PARTIAL`    | Infra (`docker-compose.infra.yml`) + host API verified; full `docker compose` (API-in-container) not re-run this session. |
+| Requirement                      | Status    | Evidence / Notes                                                                                                                                     |
+| -------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Monorepo scaffold                | `PARTIAL` | Backend exists at root; `api/`, `app/`, and `admin/` monorepo layout is not present.                                                                 |
+| PostgreSQL 16 Compose service    | `DONE`    | `docker-compose.yml`                                                                                                                                 |
+| MinIO Compose service            | `DONE`    | `docker-compose.yml`                                                                                                                                 |
+| Exact 17-table Prisma data model | `DONE`    | `prisma/schema.prisma` validates successfully.                                                                                                       |
+| Initial migration                | `DONE`    | `prisma/migrations/20260612000000_init/migration.sql`                                                                                                |
+| Mock seed                        | `DONE`    | Counts verified live 2026-06-15: 8 users / 6 zones / 20 businesses / 30 licenses (22/4/4) / 5 types / 10 tasks / 7 reports; 0 RNG4 with expire_date. |
+| Run migration                    | `DONE`    | `prisma migrate deploy` applied `20260612000000_init` against live Postgres 16.                                                                      |
+| Run seed                         | `DONE`    | `ts-node prisma/seed.ts` executed successfully against Postgres.                                                                                     |
+| Verify seed data                 | `DONE`    | Verified via direct SQL counts (Prisma Studio not needed).                                                                                           |
+| Clean-clone Compose startup      | `PARTIAL` | Infra (`docker-compose.infra.yml`) + host API verified; full `docker compose` (API-in-container) not re-run this session.                            |
 
 Important seed notes:
 
@@ -427,43 +504,43 @@ Important seed notes:
 
 ### P2: Inspection, Dashboards, Export, User Application
 
-| Requirement                        | Status      | Evidence / Notes                                                                                                        |
-| ---------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Scoped task list/detail            | `DONE`      | Inspector ownership and supervisor zone/agency filters exist.                                                           |
-| Task creation                      | `DONE`      | Inspector role, agency, zone, and conflict-of-interest checks exist.                                                    |
-| Sequential task number             | `PARTIAL`   | Finds the last number and increments it; concurrent requests can collide.                                               |
-| Start/cancel task transitions      | `DONE`      | State checks implemented.                                                                                               |
-| Draft report update                | `DONE`      | Owner and editable-state checks implemented.                                                                            |
-| Evidence upload/delete             | `PARTIAL`   | Size, MIME type, random object key, and MinIO calls exist; MinIO privacy/bucket setup is unverified.                    |
-| Report submit                      | `DONE`      | Moves task to `PENDING_REVIEW` and notifies supervisors.                                                                |
-| Report approve                     | `DONE`      | Handles APPROVED state and license suspend/reactivate side effects.                                                     |
-| Report return                      | `DONE`      | Requires comment through DTO and returns report to inspector.                                                           |
-| Inspector dashboard                | `DONE`      | Counts and recent task query implemented.                                                                               |
-| Supervisor dashboard               | `PARTIAL`   | Prototype ratio implemented; output shape should be validated against frontend needs.                                   |
-| Admin dashboard                    | `DONE`      | User, zone, license, and sync summary implemented.                                                                      |
+| Requirement                        | Status               | Evidence / Notes                                                                                                                                                 |
+| ---------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scoped task list/detail            | `DONE`               | Inspector ownership and supervisor zone/agency filters exist.                                                                                                    |
+| Task creation                      | `DONE`               | Inspector role, agency, zone, and conflict-of-interest checks exist.                                                                                             |
+| Sequential task number             | `PARTIAL`            | Finds the last number and increments it; concurrent requests can collide.                                                                                        |
+| Start/cancel task transitions      | `DONE`               | State checks implemented.                                                                                                                                        |
+| Draft report update                | `DONE`               | Owner and editable-state checks implemented.                                                                                                                     |
+| Evidence upload/delete             | `PARTIAL`            | Size, MIME type, random object key, and MinIO calls exist; MinIO privacy/bucket setup is unverified.                                                             |
+| Report submit                      | `DONE`               | Moves task to `PENDING_REVIEW` and notifies supervisors.                                                                                                         |
+| Report approve                     | `DONE`               | Handles APPROVED state and license suspend/reactivate side effects.                                                                                              |
+| Report return                      | `DONE`               | Requires comment through DTO and returns report to inspector.                                                                                                    |
+| Inspector dashboard                | `DONE`               | Counts and recent task query implemented.                                                                                                                        |
+| Supervisor dashboard               | `PARTIAL`            | Prototype ratio implemented; output shape should be validated against frontend needs.                                                                            |
+| Admin dashboard                    | `DONE`               | User, zone, license, and sync summary implemented.                                                                                                               |
 | PDF/XLSX export                    | `ACCEPTED DEVIATION` | Uses PDFKit/XLSX and streams directly instead of Puppeteer→MinIO→presigned. Owner-approved 2026-06-15 (no headless-Chrome dependency; sufficient for prototype). |
-| Inspector/supervisor Next.js pages | `MISSING`   | No `app/` directory exists.                                                                                             |
-| Scope/conflict integration tests   | `MISSING`   | Required cross-zone and cross-agency tests are not present.                                                             |
+| Inspector/supervisor Next.js pages | `MISSING`            | No `app/` directory exists.                                                                                                                                      |
+| Scope/conflict integration tests   | `MISSING`            | Required cross-zone and cross-agency tests are not present.                                                                                                      |
 
 ### P3: Admin, Sync, Cron
 
-| Requirement                | Status      | Evidence / Notes                                                                                     |
-| -------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
-| User list/create           | `DONE`      | Supervisor agency scope and ADMIN create implemented.                                                |
-| ADMIN-only role assignment | `DONE`      | `PATCH /api/users/:id/roles` uses `@Roles('admin')`.                                                 |
-| Agency/zone management     | `DONE`      | Supervisor restrictions and ADMIN access implemented.                                                |
-| Suspend/delete user        | `DONE`      | Session revocation and soft delete implemented.                                                      |
-| Zone CRUD                  | `PARTIAL`   | GET/POST/PUT exist; no delete route, matching the endpoint table but not generic CRUD wording.       |
-| ACFS mock sync             | `DONE`      | Five mock records and five-minute agency rate check implemented.                                     |
-| DIW CSV import             | `PARTIAL`   | Validation and upsert exist; transactionality and malformed-date handling need tests.                |
-| Sync status                | `DONE`      | Latest per agency query implemented.                                                                 |
-| Audit log list             | `PARTIAL`   | Admin/all and supervisor agency filtering exist; zone-level supervisor filtering is not implemented. |
-| Audit export               | `ACCEPTED DEVIATION` | Streams PDFKit/XLSX; owner-approved 2026-06-15 (see PDF/XLSX export row).            |
-| License expiry cron        | `DONE`      | 90/30-day notifications, expiration, and seven-day deduplication implemented.                        |
-| RNG4 fee cron              | `DONE`      | Uses the required `MOCK_OVERDUE` rule; never sets RNG4 to EXPIRED.                                   |
-| Session cleanup cron       | `DONE`      | Hourly cleanup implemented.                                                                          |
-| Nuxt 4 admin portal        | `MISSING`   | No `admin/` directory exists.                                                                        |
-| Full checklist tests       | `MISSING`   | Runtime and integration coverage is incomplete.                                                      |
+| Requirement                | Status               | Evidence / Notes                                                                                     |
+| -------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
+| User list/create           | `DONE`               | Supervisor agency scope and ADMIN create implemented.                                                |
+| ADMIN-only role assignment | `DONE`               | `PATCH /api/users/:id/roles` uses `@Roles('admin')`.                                                 |
+| Agency/zone management     | `DONE`               | Supervisor restrictions and ADMIN access implemented.                                                |
+| Suspend/delete user        | `DONE`               | Session revocation and soft delete implemented.                                                      |
+| Zone CRUD                  | `PARTIAL`            | GET/POST/PUT exist; no delete route, matching the endpoint table but not generic CRUD wording.       |
+| ACFS mock sync             | `DONE`               | Five mock records and five-minute agency rate check implemented.                                     |
+| DIW CSV import             | `PARTIAL`            | Validation and upsert exist; transactionality and malformed-date handling need tests.                |
+| Sync status                | `DONE`               | Latest per agency query implemented.                                                                 |
+| Audit log list             | `PARTIAL`            | Admin/all and supervisor agency filtering exist; zone-level supervisor filtering is not implemented. |
+| Audit export               | `ACCEPTED DEVIATION` | Streams PDFKit/XLSX; owner-approved 2026-06-15 (see PDF/XLSX export row).                            |
+| License expiry cron        | `DONE`               | 90/30-day notifications, expiration, and seven-day deduplication implemented.                        |
+| RNG4 fee cron              | `DONE`               | Uses the required `MOCK_OVERDUE` rule; never sets RNG4 to EXPIRED.                                   |
+| Session cleanup cron       | `DONE`               | Hourly cleanup implemented.                                                                          |
+| Nuxt 4 admin portal        | `MISSING`            | No `admin/` directory exists.                                                                        |
+| Full checklist tests       | `MISSING`            | Runtime and integration coverage is incomplete.                                                      |
 
 ## 4. API Contract Coverage
 
@@ -524,24 +601,24 @@ required Puppeteer/MinIO design.
 
 ## 5. Security Checklist Comparison
 
-| Guide Item                                        | Status    | Required Follow-up                                                             |
-| ------------------------------------------------- | --------- | ------------------------------------------------------------------------------ |
-| bcrypt cost >= 12                                 | `DONE`    | Add an assertion against seeded/user-created hashes.                           |
-| RS256, 15-minute JWT, JTI revocation              | `PARTIAL` | Implementation exists; run DB-backed e2e tests to verify.                      |
-| Refresh rotation and replay detection             | `PARTIAL` | `test/security.e2e-spec.ts` written; requires DB to run fully.                 |
-| ADMIN blocked from Tang Rat and wrong client type | `PARTIAL` | Unit test covers client type; `test/security.e2e-spec.ts` covers Tang Rat.     |
-| Cross-zone/cross-agency scope tests               | `PARTIAL` | `test/security.e2e-spec.ts` covers both; requires DB seed to run fully.        |
-| Conflict-of-interest test                         | `PARTIAL` | `test/security.e2e-spec.ts` covers it; requires DB seed to run fully.          |
-| Upload security and private MinIO                 | `PARTIAL` | App checks done; `StorageService.onModuleInit` now provisions private bucket.  |
-| Helmet and CORS allowlist                         | `DONE`    | Present in `src/main.ts`; runtime header test missing.                         |
-| Strict global ValidationPipe                      | `DONE`    | Present in `src/main.ts`.                                                      |
-| No unsafe raw Prisma                              | `DONE`    | No `$queryRawUnsafe` usage found.                                              |
-| Nginx and Nest throttling                         | `PARTIAL` | Nginx zones and selected decorators exist; forgot-password semantics differ.   |
-| Audit redaction                                   | `DONE`    | `audit.interceptor.ts` now uses `switchMap`+`await`; redaction preserved.      |
-| Global soft-delete middleware                     | `DONE`    | Explicit `deletedAt: null` comprehensively applied on all soft-delete models.  |
-| AllExceptionsFilter                               | `DONE`    | `src/common/filters/all-exceptions.filter.ts` wired in `main.ts`.              |
-| D3 ADMIN namespace                                | `DONE`    | `ClientTypeGuard` enforces `web_admin`; documented DECISION comment.           |
-| Concurrency-safe task numbers                     | `DONE`    | `InspectionService.createTask` moves sequence inside tx + retries on P2002.    |
+| Guide Item                                        | Status    | Required Follow-up                                                            |
+| ------------------------------------------------- | --------- | ----------------------------------------------------------------------------- |
+| bcrypt cost >= 12                                 | `DONE`    | Add an assertion against seeded/user-created hashes.                          |
+| RS256, 15-minute JWT, JTI revocation              | `PARTIAL` | Implementation exists; run DB-backed e2e tests to verify.                     |
+| Refresh rotation and replay detection             | `PARTIAL` | `test/security.e2e-spec.ts` written; requires DB to run fully.                |
+| ADMIN blocked from Tang Rat and wrong client type | `PARTIAL` | Unit test covers client type; `test/security.e2e-spec.ts` covers Tang Rat.    |
+| Cross-zone/cross-agency scope tests               | `PARTIAL` | `test/security.e2e-spec.ts` covers both; requires DB seed to run fully.       |
+| Conflict-of-interest test                         | `PARTIAL` | `test/security.e2e-spec.ts` covers it; requires DB seed to run fully.         |
+| Upload security and private MinIO                 | `PARTIAL` | App checks done; `StorageService.onModuleInit` now provisions private bucket. |
+| Helmet and CORS allowlist                         | `DONE`    | Present in `src/main.ts`; runtime header test missing.                        |
+| Strict global ValidationPipe                      | `DONE`    | Present in `src/main.ts`.                                                     |
+| No unsafe raw Prisma                              | `DONE`    | No `$queryRawUnsafe` usage found.                                             |
+| Nginx and Nest throttling                         | `PARTIAL` | Nginx zones and selected decorators exist; forgot-password semantics differ.  |
+| Audit redaction                                   | `DONE`    | `audit.interceptor.ts` now uses `switchMap`+`await`; redaction preserved.     |
+| Global soft-delete middleware                     | `DONE`    | Explicit `deletedAt: null` comprehensively applied on all soft-delete models. |
+| AllExceptionsFilter                               | `DONE`    | `src/common/filters/all-exceptions.filter.ts` wired in `main.ts`.             |
+| D3 ADMIN namespace                                | `DONE`    | `ClientTypeGuard` enforces `web_admin`; documented DECISION comment.          |
+| Concurrency-safe task numbers                     | `DONE`    | `InspectionService.createTask` moves sequence inside tx + retries on P2002.   |
 
 Security gaps — **all closed and verified 2026-06-15** (see `docs/FIX_PLAN.md`
 "Completed & verified"):

@@ -20,6 +20,7 @@ import { ExportModule } from './modules/export/export.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { InspectionModule } from './modules/inspection/inspection.module';
 import { LicenseModule } from './modules/license/license.module';
+import { LicenseDocumentExportModule } from './modules/license-document-export/license-document-export.module';
 import { JuristicModule } from './modules/juristic/juristic.module';
 import { MyModule } from './modules/my/my.module';
 import { NotificationModule } from './modules/notification/notification.module';
@@ -38,6 +39,7 @@ import { UserModule } from './modules/user/user.module';
     AgencyModule,
     AuthModule,
     LicenseModule,
+    LicenseDocumentExportModule,
     BusinessModule,
     JuristicModule,
     MyModule,

@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "certificates": [
+    {
+      "fileName": "diw.pdf",
+      "licenseNo": "กกพ.J02-38/2560",
+      "licenseTypeCode": "RNG4",
+      "businessNameTh": "โรงไฟฟ้าปลวกแดง",
+      "issueDate": "2017-10-02",
+      "expireDate": null,
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "danger-object.pdf",
+      "licenseNo": "อก0305023003860",
+      "licenseTypeCode": "HAZMAT",
+      "businessNameTh": "บริษัท ทีทีที เอาซี่ เคมิคอล จำกัด",
+      "issueDate": "2017-01-01",
+      "expireDate": "2019-12-31",
+      "status": "EXPIRED"
+    },
+    {
+      "fileName": "manufacturer.pdf",
+      "licenseNo": "ACFS47020200026",
+      "licenseTypeCode": "ACFS_PRODUCER",
+      "businessNameTh": "บริษัท โรงงานแม่รวย จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "exporter.pdf",
+      "licenseNo": "ACFS47020400004",
+      "licenseTypeCode": "ACFS_EXPORTER",
+      "businessNameTh": "บริษัท ไร่ธัญญะ จำกัด",
+      "issueDate": "2026-01-12",
+      "expireDate": "2029-01-11",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "importer.pdf",
+      "licenseNo": "ACFS47020600012",
+      "licenseTypeCode": "ACFS_IMPORTER",
+      "businessNameTh": "บริษัท เอ็ม.อาร์.เจ.ฟู้ดส์ จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor-6-1.pdf",
+      "licenseNo": "ACFS47020600021",
+      "licenseTypeCode": "ACFS_IMPORTER",
+      "businessNameTh": "บริษัท ขนมสากล จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor-6-2.pdf",
+      "licenseNo": "ACFS47020600022",
+      "licenseTypeCode": "ACFS_IMPORTER",
+      "businessNameTh": "บริษัท โรงงานแม่รวย จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor-6-3.pdf",
+      "licenseNo": "ACFS47020600023",
+      "licenseTypeCode": "ACFS_IMPORTER",
+      "businessNameTh": "บริษัท ชัยศิริ คอมมอดิทิ จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor2-1.pdf",
+      "licenseNo": "ACFS47020200027",
+      "licenseTypeCode": "ACFS_PRODUCER",
+      "businessNameTh": "บริษัท ไร่ธัญญะ จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor2-2.pdf",
+      "licenseNo": "ACFS47020200030",
+      "licenseTypeCode": "ACFS_PRODUCER",
+      "businessNameTh": "บริษัท เฮอริเทจ สแน็ค แอนด์ ฟู้ด จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor2-3.pdf",
+      "licenseNo": "ACFS47020200033",
+      "licenseTypeCode": "ACFS_PRODUCER",
+      "businessNameTh": "บริษัท อุตสาหกรรมอาหารไทย (1964) จำกัด",
+      "issueDate": "2026-01-06",
+      "expireDate": "2029-01-05",
+      "status": "ACTIVE"
+    },
+    {
+      "fileName": "morgorsor2-4.pdf",
+      "licenseNo": "ACFS47020200034",
+      "licenseTypeCode": "ACFS_PRODUCER",
+      "businessNameTh": "บริษัท แม่รวยการเกษตร (โก๋แก่) จำกัด",
+      "issueDate": "2023-01-06",
+      "expireDate": "2026-01-05",
+      "status": "EXPIRED"
+    }
+  ]
+}

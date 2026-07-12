@@ -3,13 +3,22 @@ import { LicenseStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessQueryDto, MapQueryDto } from './business.dto';
 import { buildLicenseOwnership } from '../license/license-ownership';
+import { StorageService } from '../storage/storage.service';
 
 const BUSINESS_LIST_INCLUDE = {
   owner: { select: { fullName: true } },
   juristicPerson: { select: { nameTh: true, registrationId: true } },
   licenses: {
     where: { deletedAt: null },
-    include: { licenseType: true },
+    include: {
+      licenseType: true,
+      documents: {
+        where: { docType: 'LICENSE_CERTIFICATE' },
+        select: { objectKey: true },
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+      },
+    },
   },
 } as const;
 
@@ -17,8 +26,16 @@ const BUSINESS_DETAIL_INCLUDE = {
   owner: { select: { fullName: true } },
   juristicPerson: { select: { nameTh: true, registrationId: true } },
   licenses: {
-    where: { deletedAt: null, status: LicenseStatus.ACTIVE },
-    include: { licenseType: true },
+    where: { deletedAt: null },
+    include: {
+      licenseType: true,
+      documents: {
+        where: { docType: 'LICENSE_CERTIFICATE' },
+        select: { objectKey: true },
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+      },
+    },
   },
 } as const;
 
@@ -28,7 +45,10 @@ type PublicBusinessRow =
 
 @Injectable()
 export class BusinessService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async list(query: BusinessQueryDto) {
     const where: Prisma.BusinessWhereInput = {
@@ -48,7 +68,9 @@ export class BusinessService {
       return [data, total] as const;
     });
     return {
-      data: data.map((business) => this.toPublicBusinessDto(business)),
+      data: await Promise.all(
+        data.map((business) => this.toPublicBusinessDto(business)),
+      ),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
@@ -205,7 +227,7 @@ export class BusinessService {
     };
   }
 
-  private toPublicBusinessDto(business: PublicBusinessRow) {
+  private async toPublicBusinessDto(business: PublicBusinessRow) {
     return {
       id: business.id,
       nameTh: business.nameTh,
@@ -219,9 +241,19 @@ export class BusinessService {
       deletedAt: business.deletedAt,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt,
-      licenses: business.licenses,
+      licenses: await Promise.all(
+        business.licenses.map(async (license) => ({
+          ...license,
+          previewUrl: await this.certificatePreviewUrl(license.documents),
+        })),
+      ),
       ownership: buildLicenseOwnership(business),
     };
+  }
+
+  private certificatePreviewUrl(documents: Array<{ objectKey: string }>) {
+    const document = documents[0];
+    return document ? this.storage.presign(document.objectKey) : null;
   }
 
   private mockBusinessEmail(businessId: string) {

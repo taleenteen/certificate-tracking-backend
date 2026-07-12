@@ -197,8 +197,10 @@ Recommended query key:
 ### Prototype button: seed juristic demo data
 
 Use this only for prototype/testing screens when the current user has no
-juristic data yet. The endpoint is idempotent per user and disabled in
-production.
+juristic data yet. The endpoint is idempotent per user. It clones a stable,
+per-user selection from the seeded certificate catalog into user-owned records
+and reuses the source document reference in MinIO. In a production-mode
+prototype deployment, it requires `DEMO_DATA_ENABLED=true`.
 
 ```http
 POST /api/my/dev/seed-juristic-license-demo

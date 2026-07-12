@@ -10,7 +10,9 @@ import {
   AgencyApiStatus,
   AgencyDataSource,
   AuthProvider,
+  Business,
   JuristicRole,
+  License,
   LicenseStatus,
   Prisma,
 } from '@prisma/client';
@@ -22,6 +24,7 @@ import type { DbdProvider } from '../external/dbd.provider';
 import type { TangRatProvider } from '../external/tangrat.provider';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildLicenseOwnership } from '../license/license-ownership';
+import { StorageService } from '../storage/storage.service';
 
 const LICENSE_INCLUDE = {
   licenseType: { include: { agency: { select: { code: true } } } },
@@ -30,6 +33,12 @@ const LICENSE_INCLUDE = {
       owner: { select: { fullName: true } },
       juristicPerson: { select: { nameTh: true, registrationId: true } },
     },
+  },
+  documents: {
+    where: { docType: 'LICENSE_CERTIFICATE' },
+    select: { objectKey: true },
+    orderBy: { createdAt: 'asc' },
+    take: 1,
   },
 } as const;
 
@@ -53,11 +62,32 @@ const JURISTIC_LICENSE_GROUP_INCLUDE = {
               licenseType: {
                 include: { agency: { select: { code: true } } },
               },
+              documents: {
+                where: { docType: 'LICENSE_CERTIFICATE' },
+                select: { objectKey: true },
+                orderBy: { createdAt: 'asc' },
+                take: 1,
+              },
             },
             orderBy: { licenseNo: 'asc' },
           },
         },
         orderBy: { nameTh: 'asc' },
+      },
+      licenses: {
+        where: { deletedAt: null },
+        include: {
+          licenseType: {
+            include: { agency: { select: { code: true } } },
+          },
+          documents: {
+            where: { docType: 'LICENSE_CERTIFICATE' },
+            select: { objectKey: true },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+          },
+        },
+        orderBy: { licenseNo: 'asc' },
       },
     },
   },
@@ -70,6 +100,39 @@ type JuristicLicenseGroupRow = Prisma.JuristicMemberGetPayload<{
 type DevSeedUser = {
   id: string;
   fullName: string;
+};
+
+const DEMO_TEMPLATE_INCLUDE = {
+  business: {
+    select: {
+      id: true,
+      nameTh: true,
+      address: true,
+      province: true,
+      latitude: true,
+      longitude: true,
+      phone: true,
+    },
+  },
+  documents: {
+    where: { docType: 'LICENSE_CERTIFICATE' },
+    select: {
+      docType: true,
+      fileName: true,
+      objectKey: true,
+      mimeType: true,
+      fileSizeBytes: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  },
+} as const;
+
+type DemoLicenseTemplateRow = Prisma.LicenseGetPayload<{
+  include: typeof DEMO_TEMPLATE_INCLUDE;
+}>;
+
+type DemoLicenseTemplate = DemoLicenseTemplateRow & {
+  business: NonNullable<DemoLicenseTemplateRow['business']>;
 };
 
 type DevCoordinatePoolItem = {
@@ -262,6 +325,7 @@ export class MyService {
     @Inject(DBD_PROVIDER) private readonly dbd: DbdProvider,
     @Inject(TANG_RAT_PROVIDER) private readonly tangRat: TangRatProvider,
     private readonly auth: AuthService, // for reusable D5 link/merge (Tang Rat canonical always wins)
+    private readonly storage: StorageService,
   ) {}
 
   async getLicensesPersonal(userId: string) {
@@ -276,7 +340,7 @@ export class MyService {
       },
       include: LICENSE_INCLUDE,
     });
-    return rows.map((r) => this.toLicenseDto(r));
+    return Promise.all(rows.map((r) => this.toLicenseDto(r)));
   }
 
   async getLicensesByJuristicId(juristicPersonId: string) {
@@ -290,7 +354,7 @@ export class MyService {
       },
       include: LICENSE_INCLUDE,
     });
-    return rows.map((r) => this.toLicenseDto(r));
+    return Promise.all(rows.map((r) => this.toLicenseDto(r)));
   }
 
   async getLicensesJuristic(user: JwtClaims) {
@@ -307,7 +371,7 @@ export class MyService {
       },
       include: LICENSE_INCLUDE,
     });
-    return rows.map((r) => this.toLicenseDto(r));
+    return Promise.all(rows.map((r) => this.toLicenseDto(r)));
   }
 
   async getJuristicLicenseGroups(userId: string) {
@@ -320,8 +384,10 @@ export class MyService {
       orderBy: { juristicPerson: { nameTh: 'asc' } },
     });
 
-    return memberships.map((membership) =>
-      this.toJuristicLicenseGroupDto(membership),
+    return Promise.all(
+      memberships.map((membership) =>
+        this.toJuristicLicenseGroupDto(membership),
+      ),
     );
   }
 
@@ -347,6 +413,12 @@ export class MyService {
             licenseType: {
               include: { agency: { select: { code: true } } },
             },
+            documents: {
+              where: { docType: 'LICENSE_CERTIFICATE' },
+              select: { objectKey: true },
+              orderBy: { createdAt: 'asc' },
+              take: 1,
+            },
           },
           orderBy: { licenseNo: 'asc' },
         },
@@ -367,22 +439,25 @@ export class MyService {
     });
     if (!membership?.isActive) throw new NotFoundException();
 
-    const licenses = business.licenses.map((license) => ({
-      id: license.id,
-      licenseNumber: license.licenseNo,
-      issuedAt: license.issueDate.toISOString(),
-      expiresAt: license.expireDate ? license.expireDate.toISOString() : null,
-      status: license.status,
-      suspendedAt: license.suspendedAt?.toISOString() ?? null,
-      suspensionReason: license.suspensionReason,
-      licenseType: {
-        id: license.licenseType.id,
-        code: license.licenseType.code,
-        nameTh: license.licenseType.nameTh,
-        nameEn: license.licenseType.nameEn ?? '',
-        agency: license.licenseType.agency.code,
-      },
-    }));
+    const licenses = await Promise.all(
+      business.licenses.map(async (license) => ({
+        id: license.id,
+        licenseNumber: license.licenseNo,
+        issuedAt: license.issueDate.toISOString(),
+        expiresAt: license.expireDate ? license.expireDate.toISOString() : null,
+        status: license.status,
+        suspendedAt: license.suspendedAt?.toISOString() ?? null,
+        suspensionReason: license.suspensionReason,
+        licenseType: {
+          id: license.licenseType.id,
+          code: license.licenseType.code,
+          nameTh: license.licenseType.nameTh,
+          nameEn: license.licenseType.nameEn ?? '',
+          agency: license.licenseType.agency.code,
+        },
+        previewUrl: await this.certificatePreviewUrl(license.documents),
+      })),
+    );
 
     return {
       id: business.id,
@@ -407,6 +482,7 @@ export class MyService {
 
   // MOCK: replace in UAT — dev-only endpoint to seed a near-expiry license
   async createDevLicense(userId: string) {
+    this.assertDemoDataEnabled();
     const user = await this.devSeedUser(userId);
     const license = await this.prisma.$transaction(async (tx) => {
       const seeded = await this.seedPersonalDevData(tx, user);
@@ -418,9 +494,7 @@ export class MyService {
 
   // MOCK: replace in UAT — prototype helper that seeds both personal and juristic demo data.
   async createDevDemoData(userId: string) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('Dev seed is disabled in production');
-    }
+    this.assertDemoDataEnabled();
 
     const user = await this.devSeedUser(userId);
     const seeded = await this.prisma.$transaction(async (tx) => {
@@ -440,16 +514,14 @@ export class MyService {
       success: true,
       personal: seeded.personal,
       juristic: seeded.juristic,
-      messageTh: 'สร้างข้อมูลตัวอย่างครบชุดเรียบร้อย',
+      messageTh: 'สร้างข้อมูลตัวอย่างของคุณจากชุดใบอนุญาตแล้ว',
       groups,
     };
   }
 
   // MOCK: replace in UAT — prototype-only helper for frontend demo data.
   async createDevJuristicLicenseDemo(userId: string) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('Dev seed is disabled in production');
-    }
+    this.assertDemoDataEnabled();
 
     const user = await this.devSeedUser(userId);
     const demo = await this.prisma.$transaction(async (tx) => {
@@ -475,70 +547,69 @@ export class MyService {
     return user;
   }
 
+  private assertDemoDataEnabled() {
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.DEMO_DATA_ENABLED !== 'true'
+    ) {
+      throw new ForbiddenException('Demo data is disabled');
+    }
+  }
+
   private async seedPersonalDevData(
     tx: Prisma.TransactionClient,
     user: DevSeedUser,
   ) {
-    const { hazmatType } = await this.ensureDevLicenseTypes(tx);
     const token = this.devToken(user.id);
-    const location = this.devLocation(user.id, 'individual', 0);
+    const [template] = await this.pickDemoTemplates(tx, user.id, 1);
+    const location = this.templateLocation(template, user.id, 'personal', 0);
     const business = await this.upsertPersonalDevBusiness(tx, {
       ownerUserId: user.id,
-      nameTh: `กิจการทดสอบบุคคลธรรมดา ${token} - ${location.province}`,
-      address: this.devAddress(location, 99, 'อาคารทดสอบบุคคลธรรมดา'),
-      province: location.province,
-      latitude: new Prisma.Decimal(location.latitude.toFixed(6)),
-      longitude: new Prisma.Decimal(location.longitude.toFixed(6)),
+      nameTh: `กิจการตัวอย่างของ ${user.fullName} (${token})`,
+      address: template.business.address,
+      province: template.business.province,
+      latitude: location.latitude,
+      longitude: location.longitude,
       phone: this.devPhone(token, 1),
     });
 
-    const now = new Date();
-    const issueDate = new Date(now);
-    issueDate.setUTCFullYear(issueDate.getUTCFullYear() - 1);
-    const expireDate = new Date(now.getTime() + 14 * 86_400_000);
-    const licenseNo = `DEV-${token}-IND-HAZMAT`;
-
-    await this.upsertDevLicense(tx, {
-      licenseNo,
-      businessId: business.id,
-      licenseTypeId: hazmatType.id,
-      status: LicenseStatus.ACTIVE,
-      issueDate,
-      expireDate,
-    });
-
-    const license = await tx.license.findUniqueOrThrow({
-      where: { licenseNo },
+    const license = await this.cloneDemoLicense(
+      tx,
+      template,
+      { businessId: business.id },
+      token,
+      'P1',
+    );
+    const includedLicense = await tx.license.findUniqueOrThrow({
+      where: { id: license.id },
       include: LICENSE_INCLUDE,
     });
 
-    return { businessId: business.id, license };
+    return { businessId: business.id, license: includedLicense };
   }
 
   private async seedJuristicDevData(
     tx: Prisma.TransactionClient,
     user: DevSeedUser,
   ) {
-    const { diwType, hazmatType, acfsType } =
-      await this.ensureDevLicenseTypes(tx);
     const token = this.devToken(user.id);
     const registrationId = `DEV${token.slice(0, 10)}`.padEnd(13, '0');
-    const companyLocation = this.devLocation(user.id, 'juristic', 0);
+    const templates = await this.pickDemoTemplates(tx, user.id, 3, 1);
 
     const juristicPerson = await tx.juristicPerson.upsert({
       where: { registrationId },
       create: {
         registrationId,
-        nameTh: `บริษัท ทดสอบ ${token} จำกัด`,
+        nameTh: `บริษัท ตัวอย่างของ ${user.fullName} จำกัด`,
         nameEn: `Demo Company ${token} Co., Ltd.`,
         juristicType: 'บริษัทจำกัด',
-        address: this.devAddress(companyLocation, 199, 'สำนักงานใหญ่'),
+        address: templates[0].business.address,
       },
       update: {
-        nameTh: `บริษัท ทดสอบ ${token} จำกัด`,
+        nameTh: `บริษัท ตัวอย่างของ ${user.fullName} จำกัด`,
         nameEn: `Demo Company ${token} Co., Ltd.`,
         juristicType: 'บริษัทจำกัด',
-        address: this.devAddress(companyLocation, 199, 'สำนักงานใหญ่'),
+        address: templates[0].business.address,
       },
     });
 
@@ -563,78 +634,184 @@ export class MyService {
       },
     });
 
-    const factoryLocation = this.devLocation(user.id, 'factory', 1);
-    const warehouseLocation = this.devLocation(user.id, 'warehouse', 2);
-    const factory = await this.upsertDevBusiness(tx, {
-      nameTh: `โรงงานต้นแบบ ${token} - ${factoryLocation.province}`,
-      juristicPersonId: juristicPerson.id,
-      address: this.devAddress(factoryLocation, 88, 'โรงงานต้นแบบ'),
-      province: factoryLocation.province,
-      latitude: new Prisma.Decimal(factoryLocation.latitude.toFixed(6)),
-      longitude: new Prisma.Decimal(factoryLocation.longitude.toFixed(6)),
-      phone: this.devPhone(token, 2),
-    });
-    const warehouse = await this.upsertDevBusiness(tx, {
-      nameTh: `คลังสินค้าต้นแบบ ${token} - ${warehouseLocation.province}`,
-      juristicPersonId: juristicPerson.id,
-      address: this.devAddress(warehouseLocation, 55, 'คลังสินค้าต้นแบบ'),
-      province: warehouseLocation.province,
-      latitude: new Prisma.Decimal(warehouseLocation.latitude.toFixed(6)),
-      longitude: new Prisma.Decimal(warehouseLocation.longitude.toFixed(6)),
-      phone: this.devPhone(token, 3),
-    });
-
-    const issueDate = new Date();
-    issueDate.setUTCFullYear(issueDate.getUTCFullYear() - 1);
-    const hazmatExpire = new Date();
-    hazmatExpire.setUTCDate(hazmatExpire.getUTCDate() + 45);
-    const acfsExpire = new Date();
-    acfsExpire.setUTCFullYear(acfsExpire.getUTCFullYear() + 1);
-
-    const rng4License = await this.upsertDevLicense(tx, {
-      licenseNo: `DEV-${token}-RNG4`,
-      businessId: factory.id,
-      licenseTypeId: diwType.id,
-      status: LicenseStatus.ACTIVE,
-      issueDate,
-      expireDate: null,
-    });
-    const hazmatLicense = await this.upsertDevLicense(tx, {
-      licenseNo: `DEV-${token}-HAZMAT`,
-      businessId: factory.id,
-      licenseTypeId: hazmatType.id,
-      status: LicenseStatus.ACTIVE,
-      issueDate,
-      expireDate: hazmatExpire,
-    });
-    const acfsLicense = await this.upsertDevLicense(tx, {
-      licenseNo: `DEV-${token}-ACFS`,
-      businessId: warehouse.id,
-      licenseTypeId: acfsType.id,
-      status: LicenseStatus.ACTIVE,
-      issueDate,
-      expireDate: acfsExpire,
-    });
-    const suspendedLicense = await this.upsertDevLicense(tx, {
-      licenseNo: `DEV-${token}-SUSPENDED`,
-      businessId: warehouse.id,
-      licenseTypeId: hazmatType.id,
-      status: LicenseStatus.SUSPENDED,
-      issueDate,
-      expireDate: hazmatExpire,
-      suspendedAt: new Date(),
-      suspensionReason: 'ระงับชั่วคราวเพื่อทดสอบ UI',
-    });
+    const businesses: Array<{ business: Business; license: License }> = [];
+    for (const [index, template] of templates.entries()) {
+      const location = this.templateLocation(
+        template,
+        user.id,
+        'juristic',
+        index,
+      );
+      const business = await this.upsertDevBusiness(tx, {
+        nameTh: `สถานประกอบการตัวอย่าง ${index + 1} - ${template.business.nameTh}`,
+        juristicPersonId: juristicPerson.id,
+        address: template.business.address,
+        province: template.business.province,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        phone: this.devPhone(token, index + 2),
+      });
+      const license = await this.cloneDemoLicense(
+        tx,
+        template,
+        { businessId: business.id },
+        token,
+        `J${index + 1}`,
+      );
+      businesses.push({ business, license });
+    }
+    const corporateTemplates = [
+      ...(await this.pickDemoTemplates(tx, user.id, 1, 4, ['ACFS_EXPORTER'])),
+      ...(await this.pickDemoTemplates(tx, user.id, 1, 5, ['ACFS_IMPORTER'])),
+    ];
+    const corporateLicenses: License[] = [];
+    for (const [index, template] of corporateTemplates.entries()) {
+      corporateLicenses.push(
+        await this.cloneDemoLicense(
+          tx,
+          template,
+          { juristicPersonId: juristicPerson.id },
+          token,
+          `C${index + 1}`,
+        ),
+      );
+    }
 
     return {
       juristicId: juristicPerson.id,
-      businessIds: [factory.id, warehouse.id],
-      licenseIds: [
-        rng4License.id,
-        hazmatLicense.id,
-        acfsLicense.id,
-        suspendedLicense.id,
-      ],
+      businessIds: businesses.map((item) => item.business.id),
+      licenseIds: businesses.map((item) => item.license.id),
+      corporateLicenseIds: corporateLicenses.map((license) => license.id),
+    };
+  }
+
+  private async pickDemoTemplates(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    count: number,
+    offset = 0,
+    typeCodes?: string[],
+  ) {
+    const templateRows = await tx.license.findMany({
+      where: {
+        deletedAt: null,
+        licenseNo: { not: { startsWith: 'DEMO-' } },
+        licenseType: typeCodes ? { code: { in: typeCodes } } : undefined,
+        business: {
+          deletedAt: null,
+          latitude: { not: null },
+          longitude: { not: null },
+        },
+        documents: { some: { docType: 'LICENSE_CERTIFICATE' } },
+      },
+      include: DEMO_TEMPLATE_INCLUDE,
+      orderBy: { licenseNo: 'asc' },
+    });
+    const templates = templateRows.filter(
+      (template): template is DemoLicenseTemplate => !!template.business,
+    );
+    if (!templates.length) {
+      throw new UnprocessableEntityException(
+        'Demo certificate templates are not available',
+      );
+    }
+
+    const selected: DemoLicenseTemplate[] = [];
+    const selectedBusinessIds = new Set<string>();
+    const start =
+      (this.devHash(`${userId}:demo-template`) + offset) % templates.length;
+    for (
+      let index = 0;
+      index < templates.length && selected.length < count;
+      index += 1
+    ) {
+      const template = templates[(start + index) % templates.length];
+      if (!template || selectedBusinessIds.has(template.business.id)) continue;
+      selected.push(template);
+      selectedBusinessIds.add(template.business.id);
+    }
+    if (selected.length < count) {
+      throw new UnprocessableEntityException(
+        'Not enough demo certificate templates are available',
+      );
+    }
+    return selected;
+  }
+
+  private async cloneDemoLicense(
+    tx: Prisma.TransactionClient,
+    template: DemoLicenseTemplate,
+    subject: { businessId?: string; juristicPersonId?: string },
+    token: string,
+    slot: string,
+  ) {
+    const license = await this.upsertDevLicense(tx, {
+      licenseNo:
+        `DEMO-${token.slice(0, 6)}-${slot}-${template.licenseNo}`.slice(0, 50),
+      businessId: subject.businessId,
+      juristicPersonId: subject.juristicPersonId,
+      licenseTypeId: template.licenseTypeId,
+      status: template.status,
+      issueDate: template.issueDate,
+      expireDate: template.expireDate,
+      suspendedAt: template.suspendedAt ?? undefined,
+      suspensionReason: template.suspensionReason ?? undefined,
+    });
+    const existingDocuments = await tx.licenseDocument.findMany({
+      where: { licenseId: license.id },
+      select: { objectKey: true },
+    });
+    const existingObjectKeys = new Set(
+      existingDocuments.map((document) => document.objectKey),
+    );
+    const newDocuments = template.documents.filter(
+      (document) => !existingObjectKeys.has(document.objectKey),
+    );
+    if (newDocuments.length) {
+      await tx.licenseDocument.createMany({
+        data: newDocuments.map((document) => ({
+          licenseId: license.id,
+          docType: document.docType,
+          fileName: document.fileName,
+          objectKey: document.objectKey,
+          mimeType: document.mimeType,
+          fileSizeBytes: document.fileSizeBytes,
+        })),
+      });
+    }
+    return license;
+  }
+
+  private templateLocation(
+    template: DemoLicenseTemplate,
+    userId: string,
+    flow: string,
+    slot: number,
+  ) {
+    if (!template.business.latitude || !template.business.longitude) {
+      throw new UnprocessableEntityException(
+        'Demo template has no map coordinate',
+      );
+    }
+    const latitudeJitter =
+      (this.devRatio(`${userId}:${flow}:${slot}:lat`) - 0.5) * 0.006;
+    const longitudeJitter =
+      (this.devRatio(`${userId}:${flow}:${slot}:lng`) - 0.5) * 0.006;
+    return {
+      latitude: new Prisma.Decimal(
+        this.clamp(
+          Number(template.business.latitude) + latitudeJitter,
+          THAILAND_BOUNDS.minLat,
+          THAILAND_BOUNDS.maxLat,
+        ).toFixed(6),
+      ),
+      longitude: new Prisma.Decimal(
+        this.clamp(
+          Number(template.business.longitude) + longitudeJitter,
+          THAILAND_BOUNDS.minLng,
+          THAILAND_BOUNDS.maxLng,
+        ).toFixed(6),
+      ),
     };
   }
 
@@ -710,7 +887,8 @@ export class MyService {
     return Math.min(max, Math.max(min, value));
   }
 
-  private toLicenseDto(license: MyLicenseRow) {
+  private async toLicenseDto(license: MyLicenseRow) {
+    if (!license.business) throw new NotFoundException();
     return {
       id: license.id,
       licenseNumber: license.licenseNo,
@@ -734,14 +912,13 @@ export class MyService {
       ownership: buildLicenseOwnership(license.business, {
         exposeIndividualContext: true,
       }),
+      previewUrl: await this.certificatePreviewUrl(license.documents),
     };
   }
 
-  private toJuristicLicenseGroupDto(membership: JuristicLicenseGroupRow) {
-    // TODO(schema): support License rows scoped directly to JuristicPerson.
-    const corporateLicenses: never[] = [];
-    const businesses = membership.juristicPerson.businesses.map((business) => {
-      const licenses = business.licenses.map((license) => ({
+  private async toJuristicLicenseGroupDto(membership: JuristicLicenseGroupRow) {
+    const corporateLicenses = await Promise.all(
+      membership.juristicPerson.licenses.map(async (license) => ({
         id: license.id,
         licenseNumber: license.licenseNo,
         issuedAt: license.issueDate.toISOString(),
@@ -754,16 +931,40 @@ export class MyService {
           nameEn: license.licenseType.nameEn ?? '',
           agency: license.licenseType.agency.code,
         },
-      }));
+        previewUrl: await this.certificatePreviewUrl(license.documents),
+      })),
+    );
+    const businesses = await Promise.all(
+      membership.juristicPerson.businesses.map(async (business) => {
+        const licenses = await Promise.all(
+          business.licenses.map(async (license) => ({
+            id: license.id,
+            licenseNumber: license.licenseNo,
+            issuedAt: license.issueDate.toISOString(),
+            expiresAt: license.expireDate
+              ? license.expireDate.toISOString()
+              : null,
+            status: license.status,
+            licenseType: {
+              id: license.licenseType.id,
+              code: license.licenseType.code,
+              nameTh: license.licenseType.nameTh,
+              nameEn: license.licenseType.nameEn ?? '',
+              agency: license.licenseType.agency.code,
+            },
+            previewUrl: await this.certificatePreviewUrl(license.documents),
+          })),
+        );
 
-      return {
-        id: business.id,
-        nameTh: business.nameTh,
-        province: business.province,
-        licenseCount: licenses.length,
-        licenses,
-      };
-    });
+        return {
+          id: business.id,
+          nameTh: business.nameTh,
+          province: business.province,
+          licenseCount: licenses.length,
+          licenses,
+        };
+      }),
+    );
 
     const businessLicenseCount = businesses.reduce(
       (total, business) => total + business.licenseCount,
@@ -783,6 +984,11 @@ export class MyService {
       corporateLicenses,
       businesses,
     };
+  }
+
+  private certificatePreviewUrl(documents: Array<{ objectKey: string }>) {
+    const document = documents[0];
+    return document ? this.storage.presign(document.objectKey) : null;
   }
 
   private buildLicenseSummary(licenses: Array<{ status: LicenseStatus }>) {
@@ -988,7 +1194,8 @@ export class MyService {
     tx: Prisma.TransactionClient,
     data: {
       licenseNo: string;
-      businessId: string;
+      businessId?: string;
+      juristicPersonId?: string;
       licenseTypeId: string;
       status: LicenseStatus;
       issueDate: Date;
@@ -1002,6 +1209,7 @@ export class MyService {
       create: {
         licenseNo: data.licenseNo,
         businessId: data.businessId,
+        juristicPersonId: data.juristicPersonId,
         licenseTypeId: data.licenseTypeId,
         status: data.status,
         issueDate: data.issueDate,
@@ -1011,6 +1219,7 @@ export class MyService {
       },
       update: {
         businessId: data.businessId,
+        juristicPersonId: data.juristicPersonId,
         licenseTypeId: data.licenseTypeId,
         status: data.status,
         issueDate: data.issueDate,

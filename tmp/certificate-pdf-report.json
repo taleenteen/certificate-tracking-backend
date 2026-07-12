@@ -1,0 +1,207 @@
+{
+  "generatedAt": "2026-07-11T17:13:39.519Z",
+  "assetDirectory": "src/assets/pdf",
+  "summary": {
+    "fileCount": 12,
+    "configuredCount": 12,
+    "unconfiguredCount": 0,
+    "invalidProfileCount": 0,
+    "missingConfiguredFileCount": 0
+  },
+  "profileErrors": [],
+  "missingFiles": [],
+  "files": [
+    {
+      "fileName": "danger-object.pdf",
+      "fileSizeBytes": 1630335,
+      "sha256": "a799fb26eabc3e0732373fe1916035207dfdc5f358658a36f3395445be4a6208",
+      "pageCount": 12,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "danger-object.pdf",
+        "licenseNo": "อก0305023003860",
+        "licenseTypeCode": "HAZMAT",
+        "businessNameTh": "บริษัท ทีทีที เอาซี่ เคมิคอล จำกัด",
+        "issueDate": "2017-01-01",
+        "expireDate": "2019-12-31",
+        "status": "EXPIRED"
+      }
+    },
+    {
+      "fileName": "diw.pdf",
+      "fileSizeBytes": 1852723,
+      "sha256": "254626336d12e58651cc64dd7ade01771bfcc5a18ae24bbe91e66c94630c022b",
+      "pageCount": 10,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "diw.pdf",
+        "licenseNo": "กกพ.J02-38/2560",
+        "licenseTypeCode": "RNG4",
+        "businessNameTh": "โรงไฟฟ้าปลวกแดง",
+        "issueDate": "2017-10-02",
+        "expireDate": null,
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "exporter.pdf",
+      "fileSizeBytes": 112352,
+      "sha256": "9dc083d99b3bd58affd1199611830ec0653b39f99230ce3932a9c6d450fb5d56",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "exporter.pdf",
+        "licenseNo": "ACFS47020400004",
+        "licenseTypeCode": "ACFS_EXPORTER",
+        "businessNameTh": "บริษัท ไร่ธัญญะ จำกัด",
+        "issueDate": "2026-01-12",
+        "expireDate": "2029-01-11",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "importer.pdf",
+      "fileSizeBytes": 63532,
+      "sha256": "77145fc43f59cc5f68af539387a5ec9942c82f78554dce2df162922e0b58231d",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "importer.pdf",
+        "licenseNo": "ACFS47020600012",
+        "licenseTypeCode": "ACFS_IMPORTER",
+        "businessNameTh": "บริษัท เอ็ม.อาร์.เจ.ฟู้ดส์ จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "manufacturer.pdf",
+      "fileSizeBytes": 66848,
+      "sha256": "da6628ab8451b34486b0d448cb3eaab3ab11e18df00d2c37ff4ce4ad1bad2d48",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "manufacturer.pdf",
+        "licenseNo": "ACFS47020200026",
+        "licenseTypeCode": "ACFS_PRODUCER",
+        "businessNameTh": "บริษัท โรงงานแม่รวย จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor-6-1.pdf",
+      "fileSizeBytes": 112686,
+      "sha256": "62261ef0e15a6548f6fc2c4769f8156b549818d85428c166624641c3c7f48f00",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor-6-1.pdf",
+        "licenseNo": "ACFS47020600021",
+        "licenseTypeCode": "ACFS_IMPORTER",
+        "businessNameTh": "บริษัท ขนมสากล จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor-6-2.pdf",
+      "fileSizeBytes": 63563,
+      "sha256": "bdcd7638654cca0fc1b3c0c3561074c624eee4f4230260c2d7b8ff47e0876138",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor-6-2.pdf",
+        "licenseNo": "ACFS47020600022",
+        "licenseTypeCode": "ACFS_IMPORTER",
+        "businessNameTh": "บริษัท โรงงานแม่รวย จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor-6-3.pdf",
+      "fileSizeBytes": 63488,
+      "sha256": "a49211e697121dd6ab370f243dd4d0dc93da4743c18da912b06ad41b72df5e5f",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor-6-3.pdf",
+        "licenseNo": "ACFS47020600023",
+        "licenseTypeCode": "ACFS_IMPORTER",
+        "businessNameTh": "บริษัท ชัยศิริ คอมมอดิทิ จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor2-1.pdf",
+      "fileSizeBytes": 115712,
+      "sha256": "0dbea204b35b9229ebc985539732fc379e0d92d0c81715c640afb1219e4ca459",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor2-1.pdf",
+        "licenseNo": "ACFS47020200027",
+        "licenseTypeCode": "ACFS_PRODUCER",
+        "businessNameTh": "บริษัท ไร่ธัญญะ จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor2-2.pdf",
+      "fileSizeBytes": 115813,
+      "sha256": "d6f30a5362fe98760f4d345a6cb1cf5d24b9c3e15d577ef1c0bb077acbc32cbd",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor2-2.pdf",
+        "licenseNo": "ACFS47020200030",
+        "licenseTypeCode": "ACFS_PRODUCER",
+        "businessNameTh": "บริษัท เฮอริเทจ สแน็ค แอนด์ ฟู้ด จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor2-3.pdf",
+      "fileSizeBytes": 116660,
+      "sha256": "e973ab438be6d6242e290c929abc6f5f7b6722ef6b920b97a692b20fd3aa7d09",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor2-3.pdf",
+        "licenseNo": "ACFS47020200033",
+        "licenseTypeCode": "ACFS_PRODUCER",
+        "businessNameTh": "บริษัท อุตสาหกรรมอาหารไทย (1964) จำกัด",
+        "issueDate": "2026-01-06",
+        "expireDate": "2029-01-05",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "fileName": "morgorsor2-4.pdf",
+      "fileSizeBytes": 49205,
+      "sha256": "b5f6803d4844bb39107f4dec3a14a8e176d62ecaced23fb00c20099c9573530d",
+      "pageCount": 2,
+      "profileStatus": "CONFIGURED",
+      "profile": {
+        "fileName": "morgorsor2-4.pdf",
+        "licenseNo": "ACFS47020200034",
+        "licenseTypeCode": "ACFS_PRODUCER",
+        "businessNameTh": "บริษัท แม่รวยการเกษตร (โก๋แก่) จำกัด",
+        "issueDate": "2023-01-06",
+        "expireDate": "2026-01-05",
+        "status": "EXPIRED"
+      }
+    }
+  ]
+}

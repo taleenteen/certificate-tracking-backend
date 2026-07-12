@@ -94,6 +94,8 @@ services:
       ALLOW_SEED: "true"
       # PROTOTYPE: accept TOTP code 000000 (no authenticator app needed). Remove for real prod.
       TOTP_BYPASS: "true"
+      # Prototype-only user-owned mock data generator. Set false for a real deployment.
+      DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-true}
       DATABASE_URL: postgresql://elicense:${DB_PASSWORD}@db:5432/elicense?schema=public
       JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64}
       JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}

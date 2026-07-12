@@ -41,8 +41,10 @@ Status tracking lives in **`docs/IMPLEMENTATION_STATUS_AI.md`**.
 
 1. **All external data is MOCK.** Keep every integration behind a provider in
    `src/modules/external/`. Mark mocks `// MOCK: replace in UAT`.
-2. **Never add or rename Prisma schema fields.** If you think you need one, stop
-   and leave a `// TODO(schema):` comment instead.
+2. **Schema changes require owner approval.** Before adding or renaming Prisma
+   schema fields, explain the proposed schema and migration, then ask whether to
+   proceed. After the owner approves, update `schema.prisma`, add a reviewed
+   migration, and verify it against the seeded database.
 3. **Enum values are exact.** Import from `@prisma/client`; never use raw status
    strings or change casing.
 4. **RNG4 licenses never expire by date.** Non-payment → `SUSPENDED`, never

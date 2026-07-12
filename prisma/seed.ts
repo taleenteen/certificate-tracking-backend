@@ -14,12 +14,30 @@ import {
   TaskStatus,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import {
+  CreateBucketCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 const adminPassword = 'ChangeMe-2026!';
+const mockBucket = process.env.MINIO_BUCKET ?? 'elicense-private';
+const mockStorage = new S3Client({
+  endpoint: process.env.MINIO_ENDPOINT ?? 'http://localhost:9000',
+  region: process.env.MINIO_REGION ?? 'us-east-1',
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: process.env.MINIO_ACCESS_KEY ?? 'elicense',
+    secretAccessKey: process.env.MINIO_SECRET_KEY ?? 'change-me',
+  },
+});
 
 const normalizeCitizenId = (raw: string) => raw.replace(/[\s-]/g, '');
 
@@ -51,8 +69,42 @@ const addDays = (days: number) => {
   return date;
 };
 
+async function ensureMockBucket() {
+  try {
+    await mockStorage.send(new HeadBucketCommand({ Bucket: mockBucket }));
+  } catch {
+    await mockStorage.send(new CreateBucketCommand({ Bucket: mockBucket }));
+  }
+}
+
+async function attachMockCertificate(licenseId: string, fileName: string) {
+  const filePath = resolve(process.cwd(), 'src/assets/pdf', fileName);
+  const body = readFileSync(filePath);
+  const objectKey = `mock-license-certificates/${fileName}`;
+  await mockStorage.send(
+    new PutObjectCommand({
+      Bucket: mockBucket,
+      Key: objectKey,
+      Body: body,
+      ContentType: 'application/pdf',
+    }),
+  );
+  await prisma.licenseDocument.create({
+    data: {
+      licenseId,
+      docType: 'LICENSE_CERTIFICATE',
+      fileName,
+      objectKey,
+      mimeType: 'application/pdf',
+      fileSizeBytes: body.length,
+    },
+  });
+}
+
 async function resetDatabase() {
   await prisma.$transaction(async (tx) => {
+    await tx.licenseDocumentExportItem.deleteMany();
+    await tx.licenseDocumentExport.deleteMany();
     await tx.licenseDocument.deleteMany();
     await tx.officerInspectionEvidence.deleteMany();
     await tx.officerInspectionItem.deleteMany();
@@ -164,6 +216,9 @@ async function main() {
       },
     }),
     ...[
+      ['ACFS_PRODUCER', 'ใบอนุญาตเป็นผู้ผลิตสินค้าเกษตร', 3],
+      ['ACFS_EXPORTER', 'ใบอนุญาตเป็นผู้ส่งออกสินค้าเกษตร', 3],
+      ['ACFS_IMPORTER', 'ใบอนุญาตเป็นผู้นำเข้าสินค้าเกษตร', 3],
       ['ACFS_MANDATORY', 'ใบอนุญาตมาตรฐานบังคับ', 1],
       ['ACFS_GENERAL', 'ใบรับรองมาตรฐานทั่วไป', 1],
       ['ACFS_GAP_HACCP', 'ใบรับรอง GAP/HACCP', 3],
@@ -403,6 +458,91 @@ async function main() {
     ),
   );
 
+  const certificateJuristicPersons = await Promise.all(
+    [
+      {
+        registrationId: '0105559000001',
+        nameTh: 'บริษัท กัลฟ์ ผลิต จำกัด',
+        nameEn: 'Gulf Production Company Limited',
+        address:
+          '87 อาคารเอ็มไทย ทาวเวอร์ ออลซีซั่น เพลส ชั้น 11 ถนนวิทยุ กรุงเทพมหานคร',
+      },
+      {
+        registrationId: '0105549000002',
+        nameTh: 'บริษัท ทีทีที เอาซี่ เคมิคอล จำกัด',
+        nameEn: 'TTT Aussie Chemical Company Limited',
+        address: '8 หมู่ 3-1 ตำบลห้วยโป่ง อำเภอเมืองระยอง จังหวัดระยอง 21150',
+      },
+      {
+        registrationId: '0105559000003',
+        nameTh: 'บริษัท โรงงานแม่รวย จำกัด',
+        nameEn: 'Mae-Ruay Snack Food Factory Company Limited',
+        address:
+          '11/1-11/2 ถนนบางขุนเทียน-ชายทะเล แขวงแสมดำ เขตบางขุนเทียน กรุงเทพมหานคร 10150',
+      },
+      {
+        registrationId: '0105559000004',
+        nameTh: 'บริษัท ไร่ธัญญะ จำกัด',
+        nameEn: 'Thanya Farm Company Limited',
+        address:
+          '62/3, 62/5 หมู่ 3 ตำบลบางใหญ่ อำเภอบางใหญ่ จังหวัดนนทบุรี 11140',
+      },
+      {
+        registrationId: '0105559000005',
+        nameTh: 'บริษัท เอ็ม.อาร์.เจ.ฟู้ดส์ จำกัด',
+        nameEn: 'M.R.J. Food Company Limited',
+        address:
+          '24/27 ถนนพระราม 2 หมู่ 1 ตำบลบางน้ำจืด อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
+      },
+    ].map((company) =>
+      prisma.juristicPerson.create({
+        data: { ...company, juristicType: 'บริษัทจำกัด' },
+      }),
+    ),
+  );
+
+  const additionalCertificateJuristicPersons = await Promise.all(
+    [
+      {
+        registrationId: '0105559000006',
+        nameTh: 'บริษัท ขนมสากล จำกัด',
+        nameEn: 'Kanom Sakol Company Limited',
+        address:
+          '43 ชั้น 3 ซอยสุขุมวิท 51 ถนนสุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพมหานคร 10110',
+      },
+      {
+        registrationId: '0105559000007',
+        nameTh: 'บริษัท ชัยศิริ คอมมอดิทิ จำกัด',
+        nameEn: 'Chaisiri Commodity Company Limited',
+        address: '447 หมู่ 2 ตำบลแม่ตาว อำเภอแม่สอด จังหวัดตาก 63110',
+      },
+      {
+        registrationId: '0105559000008',
+        nameTh: 'บริษัท เฮอริเทจ สแน็ค แอนด์ ฟู้ด จำกัด',
+        nameEn: 'Heritage Snacks and Food Company Limited',
+        address:
+          '34/1-34/2 ซอยกระทุ่มล้ม 31 ถนนพุทธมณฑลสาย 4 ตำบลกระทุ่มล้ม อำเภอสามพราน จังหวัดนครปฐม 73220',
+      },
+      {
+        registrationId: '0105559000009',
+        nameTh: 'บริษัท อุตสาหกรรมอาหารไทย (1964) จำกัด',
+        nameEn: 'Thai Food Industry (1964) Company Limited',
+        address:
+          '50 ซอยเพชรเกษม 48 แยก 16-2 แขวงบางด้วน เขตภาษีเจริญ กรุงเทพมหานคร 10160',
+      },
+      {
+        registrationId: '0105559000010',
+        nameTh: 'บริษัท แม่รวยการเกษตร (โก๋แก่) จำกัด',
+        nameEn: 'Mae Ruay Agriculture (Koh-Kae) Company Limited',
+        address: '359 หมู่ 1 ตำบลห้วยยาง อำเภอเมืองสกลนคร จังหวัดสกลนคร 47000',
+      },
+    ].map((company) =>
+      prisma.juristicPerson.create({
+        data: { ...company, juristicType: 'บริษัทจำกัด' },
+      }),
+    ),
+  );
+
   // D6: give publicOwner OWNER on company[0] and ADMIN on company[1]
   // so context-switching is demonstrable with one user across two companies.
   await prisma.juristicMember.createMany({
@@ -425,24 +565,137 @@ async function main() {
   });
 
   const businesses: Business[] = [];
+  const certificateBusinesses = await Promise.all(
+    [
+      {
+        nameTh: 'โรงไฟฟ้าปลวกแดง',
+        address: 'หมู่ 1, 2, 5 ตำบลมาบยางพร อำเภอปลวกแดง จังหวัดระยอง',
+        province: 'ระยอง',
+        latitude: 12.994,
+        longitude: 101.174,
+        phone: '023456789',
+      },
+      {
+        nameTh: 'บริษัท ทีทีที เอาซี่ เคมิคอล จำกัด',
+        address: '8 หมู่ 3-1 ตำบลห้วยโป่ง อำเภอเมืองระยอง จังหวัดระยอง 21150',
+        province: 'ระยอง',
+        latitude: 12.694,
+        longitude: 101.181,
+        phone: '038974800',
+      },
+      {
+        nameTh: 'บริษัท โรงงานแม่รวย จำกัด',
+        address:
+          '11/1-11/2 ถนนบางขุนเทียน-ชายทะเล แขวงแสมดำ เขตบางขุนเทียน กรุงเทพมหานคร 10150',
+        province: 'กรุงเทพมหานคร',
+        latitude: 13.664,
+        longitude: 100.451,
+        phone: '024160000',
+      },
+      {
+        nameTh: 'บริษัท ไร่ธัญญะ จำกัด',
+        address:
+          '62/3, 62/5 หมู่ 3 ตำบลบางใหญ่ อำเภอบางใหญ่ จังหวัดนนทบุรี 11140',
+        province: 'นนทบุรี',
+        latitude: 13.855,
+        longitude: 100.409,
+        phone: '024030000',
+      },
+      {
+        nameTh: 'บริษัท เอ็ม.อาร์.เจ.ฟู้ดส์ จำกัด',
+        address:
+          '24/27 ถนนพระราม 2 หมู่ 1 ตำบลบางน้ำจืด อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
+        province: 'สมุทรสาคร',
+        latitude: 13.578,
+        longitude: 100.279,
+        phone: '034410000',
+      },
+    ].map((business, index) =>
+      prisma.business.create({
+        data: {
+          ...business,
+          juristicPersonId: certificateJuristicPersons[index].id,
+          geocodedAt: new Date(),
+        },
+      }),
+    ),
+  );
+  const additionalCertificateBusinesses = await Promise.all(
+    [
+      {
+        nameTh: 'บริษัท ขนมสากล จำกัด',
+        address:
+          '43 ชั้น 3 ซอยสุขุมวิท 51 ถนนสุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพมหานคร 10110',
+        province: 'กรุงเทพมหานคร',
+        latitude: 13.733,
+        longitude: 100.579,
+        phone: '022610000',
+      },
+      {
+        nameTh: 'บริษัท ชัยศิริ คอมมอดิทิ จำกัด',
+        address: '447 หมู่ 2 ตำบลแม่ตาว อำเภอแม่สอด จังหวัดตาก 63110',
+        province: 'ตาก',
+        latitude: 16.718,
+        longitude: 98.574,
+        phone: '055510000',
+      },
+      {
+        nameTh: 'บริษัท เฮอริเทจ สแน็ค แอนด์ ฟู้ด จำกัด',
+        address:
+          '34/1-34/2 ซอยกระทุ่มล้ม 31 ถนนพุทธมณฑลสาย 4 ตำบลกระทุ่มล้ม อำเภอสามพราน จังหวัดนครปฐม 73220',
+        province: 'นครปฐม',
+        latitude: 13.718,
+        longitude: 100.261,
+        phone: '024200000',
+      },
+      {
+        nameTh: 'บริษัท อุตสาหกรรมอาหารไทย (1964) จำกัด',
+        address:
+          '50 ซอยเพชรเกษม 48 แยก 16-2 แขวงบางด้วน เขตภาษีเจริญ กรุงเทพมหานคร 10160',
+        province: 'กรุงเทพมหานคร',
+        latitude: 13.717,
+        longitude: 100.449,
+        phone: '024570000',
+      },
+      {
+        nameTh: 'บริษัท แม่รวยการเกษตร (โก๋แก่) จำกัด',
+        address: '359 หมู่ 1 ตำบลห้วยยาง อำเภอเมืองสกลนคร จังหวัดสกลนคร 47000',
+        province: 'สกลนคร',
+        latitude: 17.159,
+        longitude: 104.147,
+        phone: '042710000',
+      },
+    ].map((business, index) =>
+      prisma.business.create({
+        data: {
+          ...business,
+          juristicPersonId: additionalCertificateJuristicPersons[index].id,
+          geocodedAt: new Date(),
+        },
+      }),
+    ),
+  );
+  businesses.push(...certificateBusinesses);
+  businesses.push(...additionalCertificateBusinesses);
+  const genericBusinesses: Business[] = [];
   for (let index = 0; index < 20; index += 1) {
     const locationIndex = index % locationSpecs.length;
     const [province, lat, lng] = locationSpecs[locationIndex];
-    businesses.push(
-      await prisma.business.create({
-        data: {
-          nameTh: `สถานประกอบการตัวอย่าง ${index + 1}`,
-          juristicPersonId: juristicPersons[index % juristicPersons.length].id,
-          ownerUserId: index === 0 ? publicOwner.id : null,
-          address: `${100 + index} ถนนอุตสาหกรรม จังหวัด${province}`,
-          province,
-          latitude: lat + index * 0.001,
-          longitude: lng + index * 0.001,
-          geocodedAt: new Date(),
-          phone: `02${String(1000000 + index).padStart(7, '0')}`,
-        },
-      }),
-    );
+    const business = await prisma.business.create({
+      data: {
+        nameTh: `สถานประกอบการตัวอย่าง ${index + 1}`,
+        juristicPersonId: juristicPersons[index % juristicPersons.length].id,
+        ownerUserId: index === 0 ? publicOwner.id : null,
+        address: `${100 + index} ถนนอุตสาหกรรม จังหวัด${province}`,
+        province,
+        latitude: lat + index * 0.001,
+        longitude: lng + index * 0.001,
+        geocodedAt: new Date(),
+        phone: `02${String(1000000 + index).padStart(7, '0')}`,
+      },
+    });
+    businesses.push(business);
+    genericBusinesses.push(business);
   }
 
   const officerBusiness = await prisma.business.create({
@@ -467,6 +720,135 @@ async function main() {
     LicenseStatus.ACTIVE,
   ];
   const licenses: License[] = [];
+  await ensureMockBucket();
+  const certificateLicenseSpecs = [
+    {
+      typeCode: 'RNG4',
+      businessId: certificateBusinesses[0].id,
+      licenseNo: 'กกพ.J02-38/2560',
+      issueDate: new Date('2017-10-02T00:00:00.000Z'),
+      expireDate: null,
+      status: LicenseStatus.ACTIVE,
+      fileName: 'diw.pdf',
+    },
+    {
+      typeCode: 'HAZMAT',
+      businessId: certificateBusinesses[1].id,
+      licenseNo: 'อก0305023003860',
+      issueDate: new Date('2017-01-01T00:00:00.000Z'),
+      expireDate: new Date('2019-12-31T00:00:00.000Z'),
+      status: LicenseStatus.EXPIRED,
+      fileName: 'danger-object.pdf',
+    },
+    {
+      typeCode: 'ACFS_PRODUCER',
+      businessId: certificateBusinesses[2].id,
+      licenseNo: 'ACFS47020200026',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'manufacturer.pdf',
+    },
+    {
+      typeCode: 'ACFS_EXPORTER',
+      businessId: certificateBusinesses[3].id,
+      licenseNo: 'ACFS47020400004',
+      issueDate: new Date('2026-01-12T00:00:00.000Z'),
+      expireDate: new Date('2029-01-11T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'exporter.pdf',
+    },
+    {
+      typeCode: 'ACFS_IMPORTER',
+      businessId: certificateBusinesses[4].id,
+      licenseNo: 'ACFS47020600012',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'importer.pdf',
+    },
+    {
+      typeCode: 'ACFS_IMPORTER',
+      businessId: additionalCertificateBusinesses[0].id,
+      licenseNo: 'ACFS47020600021',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'morgorsor-6-1.pdf',
+    },
+    {
+      typeCode: 'ACFS_IMPORTER',
+      businessId: certificateBusinesses[2].id,
+      licenseNo: 'ACFS47020600022',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'morgorsor-6-2.pdf',
+    },
+    {
+      typeCode: 'ACFS_IMPORTER',
+      businessId: additionalCertificateBusinesses[1].id,
+      licenseNo: 'ACFS47020600023',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'morgorsor-6-3.pdf',
+    },
+    {
+      typeCode: 'ACFS_PRODUCER',
+      businessId: certificateBusinesses[3].id,
+      licenseNo: 'ACFS47020200027',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'morgorsor2-1.pdf',
+    },
+    {
+      typeCode: 'ACFS_PRODUCER',
+      businessId: additionalCertificateBusinesses[2].id,
+      licenseNo: 'ACFS47020200030',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'morgorsor2-2.pdf',
+    },
+    {
+      typeCode: 'ACFS_PRODUCER',
+      businessId: additionalCertificateBusinesses[3].id,
+      licenseNo: 'ACFS47020200033',
+      issueDate: new Date('2026-01-06T00:00:00.000Z'),
+      expireDate: new Date('2029-01-05T00:00:00.000Z'),
+      status: LicenseStatus.ACTIVE,
+      fileName: 'morgorsor2-3.pdf',
+    },
+    {
+      typeCode: 'ACFS_PRODUCER',
+      businessId: additionalCertificateBusinesses[4].id,
+      licenseNo: 'ACFS47020200034',
+      issueDate: new Date('2023-01-06T00:00:00.000Z'),
+      expireDate: new Date('2026-01-05T00:00:00.000Z'),
+      status: LicenseStatus.EXPIRED,
+      fileName: 'morgorsor2-4.pdf',
+    },
+  ];
+  for (const spec of certificateLicenseSpecs) {
+    const licenseType = licenseTypes.find(
+      (type) => type.code === spec.typeCode,
+    );
+    if (!licenseType) throw new Error(`Missing license type ${spec.typeCode}`);
+    const license = await prisma.license.create({
+      data: {
+        licenseNo: spec.licenseNo,
+        businessId: spec.businessId,
+        licenseTypeId: licenseType.id,
+        status: spec.status,
+        issueDate: spec.issueDate,
+        expireDate: spec.expireDate,
+      },
+    });
+    licenses.push(license);
+    await attachMockCertificate(license.id, spec.fileName);
+  }
   for (let index = 0; index < 30; index += 1) {
     const type = licenseTypes[index % licenseTypes.length];
     const isRng4 = type.code === 'RNG4';
@@ -485,7 +867,7 @@ async function main() {
       await prisma.license.create({
         data: {
           licenseNo: `${type.code}-${String(index + 1).padStart(5, '0')}`,
-          businessId: businesses[index % businesses.length].id,
+          businessId: genericBusinesses[index % genericBusinesses.length].id,
           licenseTypeId: type.id,
           status,
           issueDate,
@@ -557,7 +939,9 @@ async function main() {
   });
   const acfsChecklist = await prisma.checklistTemplate.create({
     data: {
-      licenseTypeId: licenseTypes[4].id,
+      licenseTypeId: licenseTypes.find(
+        (type) => type.code === 'ACFS_GAP_HACCP',
+      )!.id,
       nameTh: 'แบบตรวจ GAP/HACCP',
       passingScore: 70,
       items: Array.from({ length: 6 }, (_, index) => ({

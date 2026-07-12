@@ -29,8 +29,18 @@ export class LicenseCron {
       });
       for (const license of licenses) {
         const recipients = new Set<string>();
-        if (license.business.ownerUserId) {
+        if (license.business?.ownerUserId) {
           recipients.add(license.business.ownerUserId);
+        }
+        if (license.juristicPersonId) {
+          const members = await this.prisma.juristicMember.findMany({
+            where: {
+              juristicPersonId: license.juristicPersonId,
+              isActive: true,
+            },
+            select: { userId: true },
+          });
+          members.forEach(({ userId }) => recipients.add(userId));
         }
         if (days === 30) {
           const inspectors = await this.prisma.systemUser.findMany({

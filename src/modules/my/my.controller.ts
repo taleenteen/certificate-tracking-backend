@@ -65,15 +65,16 @@ export class MyController {
       '[DEV] Create complete personal and juristic demo data for current user',
     description:
       'Prototype-only helper that creates or updates one personal demo ' +
-      'business/license and one juristic demo company with realistic Thai ' +
-      'business coordinates and licenses. Idempotent per user; disabled when ' +
-      'NODE_ENV=production.',
+      'business/license and one juristic demo company from the seeded license ' +
+      'template catalog. It clones document references and map coordinates into ' +
+      'records owned by the current user. Idempotent per user; production use ' +
+      'requires DEMO_DATA_ENABLED=true.',
   })
   @ApiOkResponse({
     description:
       'Created/updated complete demo data and returns personal/juristic ids.',
   })
-  @ApiForbiddenResponse({ description: 'Disabled in production.' })
+  @ApiForbiddenResponse({ description: 'Demo data is disabled.' })
   @Post('dev/seed-demo-data')
   createDevDemoData(@CurrentUser() user: JwtClaims) {
     return this.myService.createDevDemoData(user.sub);
@@ -85,14 +86,14 @@ export class MyController {
     description:
       'Prototype-only helper for empty databases and frontend demos. Creates ' +
       'or updates one demo juristic person, makes the current user OWNER, and ' +
-      'adds mock businesses/licenses for the juristic license accordion UI. ' +
-      'Idempotent per user; disabled when NODE_ENV=production.',
+      'clones seeded document templates into user-owned businesses/licenses. ' +
+      'Idempotent per user; production use requires DEMO_DATA_ENABLED=true.',
   })
   @ApiOkResponse({
     description:
       'Created/updated demo juristic data and returns the grouped license view.',
   })
-  @ApiForbiddenResponse({ description: 'Disabled in production.' })
+  @ApiForbiddenResponse({ description: 'Demo data is disabled.' })
   @Post('dev/seed-juristic-license-demo')
   createDevJuristicLicenseDemo(@CurrentUser() user: JwtClaims) {
     return this.myService.createDevJuristicLicenseDemo(user.sub);

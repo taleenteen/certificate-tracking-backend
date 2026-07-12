@@ -419,4 +419,56 @@ describe('Security integration tests', () => {
         });
     });
   });
+
+  // 7 — Tang Rat user promotion --------------------------------------------
+
+  describe('Tang Rat user promotion', () => {
+    it('promotes a verified Tang Rat user to officer with an agency and revokes the old session', async () => {
+      const publicSession = await tangRatLogin(app, 'mock-public-owner');
+      const superAdminToken = await adminLogin(app);
+      const usersRes = await request(app.getHttpServer())
+        .get('/api/users?q=เจ้าของกิจการตัวอย่าง')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .expect(200);
+      const target = (
+        usersRes.body as Array<{ id: string; roles: string[] }>
+      ).find((user) => user.roles.includes('public'));
+      expect(target).toBeDefined();
+
+      const agenciesRes = await request(app.getHttpServer())
+        .get('/api/agencies')
+        .expect(200);
+      const diw = (
+        agenciesRes.body as Array<{ id: string; code: string }>
+      ).find((agency) => agency.code === 'DIW');
+      expect(diw).toBeDefined();
+
+      await request(app.getHttpServer())
+        .patch(`/api/users/${target!.id}/access`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ roles: ['officer'], agencyId: diw!.id })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get('/api/my/licenses?mode=personal')
+        .set('Authorization', `Bearer ${publicSession.accessToken}`)
+        .expect(401);
+
+      const promotedSession = await tangRatLogin(app, 'mock-public-owner');
+      const claims = JSON.parse(
+        Buffer.from(
+          promotedSession.accessToken.split('.')[1],
+          'base64',
+        ).toString(),
+      ) as { roles: string[]; agencyId: string | null };
+      expect(claims.roles).toContain('officer');
+      expect(claims.agencyId).toBe(diw!.id);
+
+      await request(app.getHttpServer())
+        .patch(`/api/users/${target!.id}/access`)
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ roles: ['public'] })
+        .expect(200);
+    });
+  });
 });

@@ -171,9 +171,7 @@ export class LicenseService {
     };
   }
 
-  private publicSearchBusinessWhere(
-    query: PublicLicenseSearchDto,
-  ): {
+  private publicSearchBusinessWhere(query: PublicLicenseSearchDto): {
     businessWhere: Prisma.BusinessWhereInput;
     licenseWhere: Prisma.LicenseWhereInput;
   } {
@@ -252,6 +250,12 @@ export class LicenseService {
               },
             },
           },
+          documents: {
+            where: { docType: 'LICENSE_CERTIFICATE' },
+            select: { objectKey: true },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+          },
         },
         orderBy: { updatedAt: 'desc' },
         skip: (query.page - 1) * query.limit,
@@ -261,22 +265,25 @@ export class LicenseService {
       return [data, total] as const;
     });
     return {
-      data: data.map((license) => ({
-        id: license.id,
-        licenseNumber: license.licenseNo,
-        status: license.status,
-        issuedAt: license.issueDate.toISOString(),
-        expiresAt: license.expireDate?.toISOString() ?? null,
-        licenseType: {
-          id: license.licenseType.id,
-          code: license.licenseType.code,
-          nameTh: license.licenseType.nameTh,
-          agency: license.licenseType.agency,
-        },
-        business: this.toPublicBusiness(license.business),
-        juristic: license.business.juristicPerson,
-        ownership: buildLicenseOwnership(license.business),
-      })),
+      data: await Promise.all(
+        data.map(async (license) => ({
+          id: license.id,
+          licenseNumber: license.licenseNo,
+          status: license.status,
+          issuedAt: license.issueDate.toISOString(),
+          expiresAt: license.expireDate?.toISOString() ?? null,
+          licenseType: {
+            id: license.licenseType.id,
+            code: license.licenseType.code,
+            nameTh: license.licenseType.nameTh,
+            agency: license.licenseType.agency,
+          },
+          business: this.toPublicBusiness(license.business!),
+          juristic: license.business!.juristicPerson,
+          ownership: buildLicenseOwnership(license.business!),
+          previewUrl: await this.certificatePreviewUrl(license.documents),
+        })),
+      ),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
@@ -307,6 +314,12 @@ export class LicenseService {
                   agency: { select: { id: true, code: true, nameTh: true } },
                 },
               },
+              documents: {
+                where: { docType: 'LICENSE_CERTIFICATE' },
+                select: { objectKey: true },
+                orderBy: { createdAt: 'asc' },
+                take: 1,
+              },
             },
             orderBy: { licenseNo: 'asc' },
           },
@@ -319,30 +332,35 @@ export class LicenseService {
       return [businesses, total] as const;
     });
     return {
-      data: businesses.map((business) => ({
-        id: business.id,
-        nameTh: business.nameTh,
-        address: business.address,
-        province: business.province,
-        latitude: business.latitude,
-        longitude: business.longitude,
-        juristic: business.juristicPerson,
-        ownership: buildLicenseOwnership(business),
-        licenseCount: business.licenses.length,
-        licenses: business.licenses.map((license) => ({
-          id: license.id,
-          licenseNumber: license.licenseNo,
-          status: license.status,
-          issuedAt: license.issueDate.toISOString(),
-          expiresAt: license.expireDate?.toISOString() ?? null,
-          licenseType: {
-            id: license.licenseType.id,
-            code: license.licenseType.code,
-            nameTh: license.licenseType.nameTh,
-            agency: license.licenseType.agency,
-          },
+      data: await Promise.all(
+        businesses.map(async (business) => ({
+          id: business.id,
+          nameTh: business.nameTh,
+          address: business.address,
+          province: business.province,
+          latitude: business.latitude,
+          longitude: business.longitude,
+          juristic: business.juristicPerson,
+          ownership: buildLicenseOwnership(business),
+          licenseCount: business.licenses.length,
+          licenses: await Promise.all(
+            business.licenses.map(async (license) => ({
+              id: license.id,
+              licenseNumber: license.licenseNo,
+              status: license.status,
+              issuedAt: license.issueDate.toISOString(),
+              expiresAt: license.expireDate?.toISOString() ?? null,
+              licenseType: {
+                id: license.licenseType.id,
+                code: license.licenseType.code,
+                nameTh: license.licenseType.nameTh,
+                agency: license.licenseType.agency,
+              },
+              previewUrl: await this.certificatePreviewUrl(license.documents),
+            })),
+          ),
         })),
-      })),
+      ),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
@@ -384,6 +402,14 @@ export class LicenseService {
       where: { id, deletedAt: null },
       include: {
         licenseType: true,
+        juristicPerson: {
+          select: {
+            id: true,
+            nameTh: true,
+            registrationId: true,
+            address: true,
+          },
+        },
         business: {
           select: minimal
             ? {
@@ -414,8 +440,27 @@ export class LicenseService {
       },
     });
     if (!license) throw new NotFoundException();
-    const ownership = buildLicenseOwnership(license.business);
-    const business = this.toPublicBusiness(license.business);
+    if (!license.business && !license.juristicPerson)
+      throw new NotFoundException();
+    const business = license.business
+      ? this.toPublicBusiness(license.business)
+      : {
+          id: license.juristicPerson!.id,
+          nameTh: license.juristicPerson!.nameTh,
+          address: license.juristicPerson!.address ?? '-',
+          province: '-',
+          latitude: null,
+          longitude: null,
+        };
+    const ownership = license.business
+      ? buildLicenseOwnership(license.business)
+      : {
+          type: 'JURISTIC',
+          labelTh: 'นิติบุคคล',
+          contextId: license.juristicPerson!.id,
+          displayNameTh: license.juristicPerson!.nameTh,
+          registrationId: license.juristicPerson!.registrationId,
+        };
     if (minimal) return { ...license, business, ownership };
     return {
       ...license,
@@ -442,20 +487,31 @@ export class LicenseService {
     };
   }
 
+  private certificatePreviewUrl(documents: Array<{ objectKey: string }>) {
+    const document = documents[0];
+    return document ? this.storage.presign(document.objectKey) : null;
+  }
+
   private async assertNoLicenseConflict(
     user: JwtClaims,
     license: {
-      business: { ownerUserId: string | null; juristicPersonId: string | null };
+      business: {
+        ownerUserId: string | null;
+        juristicPersonId: string | null;
+      } | null;
+      juristicPersonId: string | null;
     },
   ) {
-    if (license.business.ownerUserId === user.sub) {
+    if (license.business?.ownerUserId === user.sub) {
       throw new ConflictException('Officer has a conflict of interest');
     }
-    if (!license.business.juristicPersonId) return;
+    const juristicPersonId =
+      license.business?.juristicPersonId ?? license.juristicPersonId;
+    if (!juristicPersonId) return;
 
     const membership = await this.prisma.juristicMember.findFirst({
       where: {
-        juristicPersonId: license.business.juristicPersonId,
+        juristicPersonId,
         userId: user.sub,
         isActive: true,
         // DECISION: OWNER and ADMIN can act for a company, so both are treated as conflicted reviewers.

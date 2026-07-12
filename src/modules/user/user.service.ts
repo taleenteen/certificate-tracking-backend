@@ -13,13 +13,13 @@ import {
   isAdminTier,
 } from '../../common/auth.roles';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto, UserQueryDto } from './user.dto';
+import { CreateUserDto, UpdateUserAccessDto, UserQueryDto } from './user.dto';
 
 @Injectable()
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(query: UserQueryDto, actor: JwtClaims) {
+  async list(query: UserQueryDto, actor: JwtClaims) {
     const where: Prisma.SystemUserWhereInput = {
       deletedAt: null,
       agencyId: actor.roles.includes('super_admin')
@@ -35,7 +35,7 @@ export class UserService {
           ]
         : undefined,
     };
-    return this.prisma.systemUser.findMany({
+    const users = await this.prisma.systemUser.findMany({
       where,
       select: {
         id: true,
@@ -48,9 +48,20 @@ export class UserService {
         isActive: true,
         mustChangePassword: true,
         lastLoginAt: true,
+        primaryChannel: true,
+        citizenIdVerifiedAt: true,
+        providerLinks: {
+          where: { provider: AuthProvider.tang_rat, isActive: true },
+          select: { id: true },
+        },
       },
       orderBy: { fullName: 'asc' },
     });
+    return users.map(({ providerLinks, ...user }) => ({
+      ...user,
+      hasTangRatIdentity: providerLinks.length > 0,
+      citizenIdVerified: !!user.citizenIdVerifiedAt,
+    }));
   }
 
   async create(dto: CreateUserDto, actor?: JwtClaims) {
@@ -132,6 +143,63 @@ export class UserService {
         agencyId: true,
         isActive: true,
       },
+    });
+  }
+
+  async updateAccess(id: string, dto: UpdateUserAccessDto, actor: JwtClaims) {
+    const target = await this.prisma.systemUser.findFirst({
+      where: { id, deletedAt: null },
+      select: { roles: true },
+    });
+    if (!target) throw new NotFoundException();
+    if (!canManageUser(actor.roles, target.roles)) {
+      throw new ForbiddenException(
+        'Cannot modify a user of equal or higher role',
+      );
+    }
+    for (const role of dto.roles) {
+      if (!canGrantRole(actor.roles, role)) {
+        throw new ForbiddenException(`Not allowed to grant role: ${role}`);
+      }
+    }
+
+    const requiresAgency = dto.roles.includes('officer');
+    if (requiresAgency && !dto.agencyId) {
+      throw new ForbiddenException('Officer access requires an agency');
+    }
+
+    if (dto.agencyId) {
+      const agency = await this.prisma.agency.findFirst({
+        where: { id: dto.agencyId, isActive: true },
+        select: { id: true },
+      });
+      if (!agency) throw new NotFoundException();
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.systemUser.update({
+        where: { id },
+        data: {
+          roles: dto.roles,
+          agencyId: requiresAgency ? dto.agencyId : null,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          roles: true,
+          agencyId: true,
+          isActive: true,
+        },
+      });
+      await tx.userSession.updateMany({
+        where: { userId: id, isRevoked: false },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+          revokeReason: 'FORCED',
+        },
+      });
+      return user;
     });
   }
 

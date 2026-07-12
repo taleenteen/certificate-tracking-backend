@@ -137,10 +137,10 @@ export class OfficerService {
           agency: license.licenseType.agency,
         },
         business: {
-          id: license.business.id,
-          nameTh: license.business.nameTh,
-          province: license.business.province,
-          juristic: license.business.juristicPerson,
+          id: license.business!.id,
+          nameTh: license.business!.nameTh,
+          province: license.business!.province,
+          juristic: license.business!.juristicPerson,
         },
       })),
       meta: { page: query.page, limit: query.limit, total },
@@ -909,7 +909,9 @@ export class OfficerService {
     if (fonts) {
       document.registerFont(regularFont, fonts.regular);
       document.registerFont(boldFont, fonts.bold);
-      this.logger.debug(`PDF fonts: regular=${fonts.regular} bold=${fonts.bold}`);
+      this.logger.debug(
+        `PDF fonts: regular=${fonts.regular} bold=${fonts.bold}`,
+      );
     } else {
       this.logger.warn(
         'No valid Thai+Latin font found for PDF export; using Helvetica (Thai/data may be □). ' +

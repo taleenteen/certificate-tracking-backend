@@ -54,6 +54,18 @@ points. **You only ever use one**, depending on who you are.
   **tang-rat** for the older mock mToken shortcut.
 - Admin in the back office → **self** (with 2FA).
 
+### Web entry points
+
+The public web login screen exposes only the DGA/ทางรัฐ flow. Password fields
+are deliberately absent from that screen. The unlinked, no-indexed
+`/portal/user-access` frontend route is the operational manual sign-in route
+for public accounts and submits `POST /api/auth/login`. The separate
+`/portal/access` route is for administrator portal sign-in only and submits
+`POST /api/auth/self` with username, password, and TOTP. These routes are
+operational conveniences, not authorization boundaries: the API still enforces
+role restrictions, rate limiting, lockout, TOTP, and `web_admin` client
+sessions.
+
 > **Why three?** Citizens want a normal "sign up" experience. Field staff are
 > already identified by the government super app, so re-entering a password
 > would be redundant. Admins touch sensitive data, so they get the strongest

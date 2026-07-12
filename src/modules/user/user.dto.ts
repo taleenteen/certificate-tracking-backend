@@ -90,3 +90,23 @@ export class UpdateAgencyDto {
   @IsUUID()
   agencyId!: string;
 }
+
+export class UpdateUserAccessDto {
+  /**
+   * Replacement role set. This back-office operation is restricted to
+   * super_admin because it may promote a Tang Rat identity to staff access.
+   * @example ["officer"]
+   */
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(['public', 'officer', 'admin', 'super_admin'], { each: true })
+  roles!: string[];
+
+  /**
+   * Required when assigning the officer role. Clear it for a public-only
+   * account so the account cannot retain staff scope accidentally.
+   */
+  @IsOptional()
+  @IsUUID()
+  agencyId?: string;
+}

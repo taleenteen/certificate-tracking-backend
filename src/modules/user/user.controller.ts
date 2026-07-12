@@ -24,6 +24,7 @@ import {
   CreateUserDto,
   UpdateAgencyDto,
   UpdateRolesDto,
+  UpdateUserAccessDto,
   UserQueryDto,
 } from './user.dto';
 import { UserService } from './user.service';
@@ -73,6 +74,25 @@ export class UserController {
     @CurrentUser() user: JwtClaims,
   ) {
     return this.users.updateRoles(id, dto.roles, user);
+  }
+
+  @Roles('super_admin')
+  @ApiOperation({
+    summary: 'Set staff access atomically (super_admin)',
+    description:
+      'Assigns the platform roles and agency together. Use this when promoting ' +
+      'a verified Tang Rat user to officer so staff scope is never partially configured.',
+  })
+  @ApiParam({ name: 'id', description: 'User uuid', format: 'uuid' })
+  @ApiOkResponse({ description: 'The updated user access.' })
+  @ApiForbiddenResponse({ description: 'Rank violation.' })
+  @Patch(':id/access')
+  access(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserAccessDto,
+    @CurrentUser() user: JwtClaims,
+  ) {
+    return this.users.updateAccess(id, dto, user);
   }
 
   @Roles('officer', 'admin')

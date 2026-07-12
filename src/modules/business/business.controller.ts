@@ -45,10 +45,10 @@ export class BusinessController {
   @ApiOperation({
     summary: 'Get a business by id',
     description:
-      'Business detail including active licenses and ownership metadata.',
+      'Business detail including all non-deleted licenses and ownership metadata.',
   })
   @ApiParam({ name: 'id', description: 'Business uuid', format: 'uuid' })
-  @ApiOkResponse({ description: 'The business with active licenses.' })
+  @ApiOkResponse({ description: 'The business with all non-deleted licenses.' })
   @ApiNotFoundResponse({ description: 'Business not found.' })
   @Get(':id')
   findOne(@Param('id') id: string) {

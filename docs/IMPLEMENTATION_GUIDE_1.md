@@ -7,7 +7,7 @@
 ## 0. HARD RULES (read first, never violate)
 
 1. **ALL data is MOCK.** This is a prototype. Every external API call (ทางรัฐ mToken verify, GDX/ACFS, DBD) must be implemented behind an interface with a `MockProvider` returning realistic fake data. Mark every mock with `// MOCK: replace in UAT`.
-2. **Never invent schema fields.** The Prisma schema in §3 is final. If you need a new field, STOP and leave a `TODO(schema)` comment instead.
+2. **Schema changes require owner approval.** Before adding or renaming Prisma schema fields, explain the proposed schema and migration, then ask whether to proceed. After the owner approves, update `schema.prisma`, add a reviewed migration, and verify it against the seeded database.
 3. **Status enums are exact strings** as defined in §3. Do not rename, lowercase, or abbreviate.
 4. **Locked security decisions** (do not re-debate):
    - D1: Role assignment is **ADMIN (SuperAdmin) only**. SUPERVISOR cannot change roles.

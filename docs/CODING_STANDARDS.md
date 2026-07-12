@@ -146,7 +146,9 @@ English only. Three sanctioned tags:
 - `// MOCK: replace in UAT` — on every fake/external stub.
 - `// DECISION: <why>` — when you make a non-obvious choice the guide didn't cover
   (choose the most secure option).
-- `// TODO(schema): <what>` — when you'd need a schema change (never make one).
+- `// TODO(schema): <what>` — when a schema change is needed but has not yet
+  been approved by the owner. After approval, add the schema change and a
+  reviewed migration.
 
 Otherwise comment only to explain a constraint the code can't show. No narration.
 

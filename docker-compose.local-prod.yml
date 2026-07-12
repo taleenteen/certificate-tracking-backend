@@ -67,6 +67,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-elicense}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in backend .env}
       TOTP_BYPASS: "true"
+      DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-true}
     ports:
       - "${LOCAL_BACKEND_PORT:-3001}:3001"
     depends_on:
