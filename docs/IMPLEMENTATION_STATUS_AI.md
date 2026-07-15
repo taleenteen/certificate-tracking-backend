@@ -14,6 +14,33 @@
 
 ## 0. Change Log
 
+- **2026-07-15 (fixed desktop navigation rail)** — Changed the desktop sidebar
+  from a scrolling layout item to a fixed, non-scrollable navigation rail and
+  reserved its width in the shared shell. The sidebar now remains stationary as
+  page content scrolls, without changing mobile navigation.
+
+- **2026-07-15 (desktop search-card rhythm)** — Standardized the collapsed
+  grouped license-search cards with a desktop baseline height, reserved title
+  and metadata space, and bottom-aligned action controls. This keeps each row
+  visually consistent while an expanded card remains independently sized.
+
+- **2026-07-15 (desktop search-card expansion alignment)** — Added
+  `lg:items-start` to the grouped license-search result grid. Expanding a
+  business now changes only that card's height instead of stretching sibling
+  cards in the same desktop grid row.
+
+- **2026-07-15 (PDF preview tab-switch cleanup)** — Certificate preview now
+  treats PDF.js `RenderingCancelledException` as expected when a license tab
+  unmounts during page-one rendering, and releases a PDF that finishes loading
+  after cleanup. Frontend type-check passed; a subsequent production build was
+  blocked by host disk exhaustion while Turbopack wrote `.next`.
+
+- **2026-07-15 (desktop progressive enhancement)** — Preserved the mobile
+  layouts as the base experience and added `lg` desktop layouts in the Next.js
+  frontend: a role-aware sidebar, a wider shared application shell, two-column
+  service/search heroes, and responsive grids for license and establishment
+  results. Type-check and production frontend build passed.
+
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
   an extra blank viewport on short pages. Mobile inputs/selects/textareas use
@@ -27,11 +54,10 @@
   without resolving it through the platform's license lookup. Officer identity
   QR verification remains on its separate internal flow.
 
-- **2026-07-12 (establishment export page UI)** — The officer establishment
-  export banner now opens a dedicated `businesses/:businessId/exports` page.
-  It provides an establishment summary, an all-license PDF export action, and
-  a collapsible list with an outlined green export action for each license,
-  while reusing the logged export endpoint.
+- **2026-07-15 (establishment export modal restored)** — Reverted the
+  dedicated establishment export page UI. The officer establishment banner
+  again opens `LicenseDocumentExportDialog`, where officers select license
+  records before exporting through the existing logged endpoint.
 
 - **2026-07-12 (license card PDF previews)** — License list, grouped search,
   and business-detail responses now include a 10-minute presigned URL for each
