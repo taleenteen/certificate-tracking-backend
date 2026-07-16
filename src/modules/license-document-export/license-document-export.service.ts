@@ -273,6 +273,18 @@ export class LicenseDocumentExportService {
     return this.storage.presign(objectKey);
   }
 
+  async nativeDelivery(objectKey: string, exportId: string) {
+    const downloadUrl = await this.storage.presign(objectKey);
+    const url = new URL(downloadUrl);
+    this.logger.log({
+      message: 'Native license export delivery created',
+      exportId,
+      downloadOrigin: url.origin,
+      protocol: url.protocol,
+    });
+    return { downloadUrl, downloadOrigin: url.origin };
+  }
+
   async verify(verificationCode: string) {
     const record = await this.prisma.licenseDocumentExport.findFirst({
       where: {

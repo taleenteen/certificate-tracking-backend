@@ -87,12 +87,17 @@ export class LicenseDocumentExportController {
       request.headers['user-agent'],
     );
     if (dto.delivery === 'native') {
+      const delivery = await this.exports.nativeDelivery(
+        file.objectKey,
+        file.exportId,
+      );
       return response.status(201).json({
         id: file.exportId,
         referenceNo: file.referenceNo,
         fileName: file.fileName,
         contentType: file.contentType,
-        downloadUrl: await this.exports.presign(file.objectKey),
+        downloadUrl: delivery.downloadUrl,
+        downloadOrigin: delivery.downloadOrigin,
         downloadUrlExpiresInSeconds: 600,
       });
     }

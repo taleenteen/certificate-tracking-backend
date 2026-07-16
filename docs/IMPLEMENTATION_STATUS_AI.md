@@ -90,6 +90,13 @@
   and immutable export record, and return a private 10-minute MinIO presigned
   URL for the Tang Rat mobile app to download.
 
+- **2026-07-16 (native export UAT diagnostics)** — Native export responses now
+  carry only the safe presigned-file origin and expiry metadata, while backend
+  logs record the export ID and origin without a signed URL. The frontend can
+  show this information behind `NEXT_PUBLIC_DGA_NATIVE_DEBUG=true`, along with
+  whether the Tang Rat SDK accepted the save request; tokens and presigned URL
+  query signatures are never displayed or logged.
+
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
   an extra blank viewport on short pages. Mobile inputs/selects/textareas use
