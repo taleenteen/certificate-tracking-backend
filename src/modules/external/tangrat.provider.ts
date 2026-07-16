@@ -134,6 +134,10 @@ export class RealTangRatProvider implements TangRatProvider {
     );
 
     if (!appId || appId !== registeredAppId) {
+      this.logger.warn({
+        message: 'DGA mToken rejected due to app ID mismatch',
+        receivedAppId: this.redactAppId(appId),
+      });
       throw new UnauthorizedException('Invalid mToken');
     }
 
@@ -162,7 +166,12 @@ export class RealTangRatProvider implements TangRatProvider {
         result?: string;
       };
       const accessToken = validatePayload.Result ?? validatePayload.result;
-      if (!accessToken) throw new UnauthorizedException('Invalid mToken');
+      if (!accessToken) {
+        this.logger.warn({
+          message: 'DGA mToken validation returned no token',
+        });
+        throw new UnauthorizedException('Invalid mToken');
+      }
 
       const profileResponse = await fetch(this.deprocUrl, {
         method: 'POST',
@@ -194,6 +203,12 @@ export class RealTangRatProvider implements TangRatProvider {
       const subject =
         profile?.czpUserId ?? profile?.userId ?? profile?.citizenId;
       if (!profile || !subject || !fullName) {
+        this.logger.warn({
+          message: 'DGA mToken profile response is incomplete',
+          hasProfile: Boolean(profile),
+          hasSubject: Boolean(subject),
+          hasFullName: Boolean(fullName),
+        });
         throw new UnauthorizedException('Invalid mToken');
       }
 
@@ -218,6 +233,12 @@ export class RealTangRatProvider implements TangRatProvider {
   private requireConfig(value: string | undefined, name: string) {
     if (!value) throw new Error(`${name} is required for real DGA mToken mode`);
     return value;
+  }
+
+  private redactAppId(appId: string | undefined) {
+    if (!appId) return 'missing';
+    if (appId.length <= 4) return 'present';
+    return `present:...${appId.slice(-4)}`;
   }
 }
 

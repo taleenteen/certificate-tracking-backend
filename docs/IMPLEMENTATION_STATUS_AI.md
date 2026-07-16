@@ -76,6 +76,12 @@
   only the Next.js container with `--no-deps`; it does not start or restart the
   backend, PostgreSQL, or MinIO services.
 
+- **2026-07-16 (mToken UAT diagnostics)** — Added safe exchange-stage logs to
+  the frontend BFF and real Tang Rat provider. Logs distinguish app-ID mismatch,
+  validate/deproc HTTP failure, empty validation response, and incomplete
+  profile responses without printing mTokens, DGA access tokens, consumer
+  credentials, or identity data.
+
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
   an extra blank viewport on short pages. Mobile inputs/selects/textareas use
