@@ -2,7 +2,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { MockDbdProvider } from './dbd.provider';
 import { MockDgaOidcProvider } from './dga-oidc.provider';
 import { MockGdxProvider } from './gdx.provider';
-import { MockTangRatProvider } from './tangrat.provider';
+import { MockTangRatProvider, RealTangRatProvider } from './tangrat.provider';
 
 describe('mock external providers', () => {
   it('maps deterministic Tang Rat tokens to seeded identities (D5: includes citizenId for Tang Rat primary path)', async () => {
@@ -51,4 +51,94 @@ describe('mock external providers', () => {
       UnauthorizedException,
     );
   });
+
+  it('exchanges a registered appId and mToken through the DGA server-side APIs', async () => {
+    const previousEnv = {
+      consumerKey: process.env.DGA_MTOKEN_CONSUMER_KEY,
+      consumerSecret: process.env.DGA_MTOKEN_CONSUMER_SECRET,
+      appId: process.env.DGA_MTOKEN_APP_ID,
+    };
+    const originalFetch = global.fetch;
+    const requests: string[] = [];
+    const fetchStub: typeof fetch = (input) => {
+      requests.push(String(input));
+      if (requests.length === 1) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ Result: 'dga-access-token' }), {
+            status: 200,
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            result: {
+              czpUserId: 'dga-user-id',
+              citizenId: '1000065432051',
+              firstName: 'สมชาย',
+              lastName: 'ใจดี',
+              mobile: '0812345678',
+              email: 'somchai@example.test',
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    };
+    process.env.DGA_MTOKEN_CONSUMER_KEY = 'consumer-key';
+    process.env.DGA_MTOKEN_CONSUMER_SECRET = 'consumer-secret';
+    process.env.DGA_MTOKEN_APP_ID = 'registered-app';
+    global.fetch = fetchStub;
+
+    try {
+      const identity = await new RealTangRatProvider().verify(
+        'one-time-mtoken',
+        'registered-app',
+      );
+
+      expect(identity).toMatchObject({
+        sub: 'dga-user-id',
+        fullName: 'สมชาย ใจดี',
+        citizenId: '1000065432051',
+      });
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toContain('AgentID=one-time-mtoken');
+      expect(requests[1]).toContain(
+        '/ws/dga/czp/uat/v1/core/shield/data/deproc',
+      );
+    } finally {
+      global.fetch = originalFetch;
+      restoreEnv('DGA_MTOKEN_CONSUMER_KEY', previousEnv.consumerKey);
+      restoreEnv('DGA_MTOKEN_CONSUMER_SECRET', previousEnv.consumerSecret);
+      restoreEnv('DGA_MTOKEN_APP_ID', previousEnv.appId);
+    }
+  });
+
+  it('rejects a mToken presented for another registered app', async () => {
+    const previousEnv = {
+      consumerKey: process.env.DGA_MTOKEN_CONSUMER_KEY,
+      consumerSecret: process.env.DGA_MTOKEN_CONSUMER_SECRET,
+      appId: process.env.DGA_MTOKEN_APP_ID,
+    };
+    process.env.DGA_MTOKEN_CONSUMER_KEY = 'consumer-key';
+    process.env.DGA_MTOKEN_CONSUMER_SECRET = 'consumer-secret';
+    process.env.DGA_MTOKEN_APP_ID = 'registered-app';
+    try {
+      await expect(
+        new RealTangRatProvider().verify('one-time-mtoken', 'other-app'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    } finally {
+      restoreEnv('DGA_MTOKEN_CONSUMER_KEY', previousEnv.consumerKey);
+      restoreEnv('DGA_MTOKEN_CONSUMER_SECRET', previousEnv.consumerSecret);
+      restoreEnv('DGA_MTOKEN_APP_ID', previousEnv.appId);
+    }
+  });
 });
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}

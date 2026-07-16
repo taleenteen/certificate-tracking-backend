@@ -102,6 +102,16 @@ export class TangRatLoginDto {
   @IsString()
   @IsNotEmpty()
   mToken!: string;
+
+  /**
+   * App ID supplied by the Tang Rat landing URL or SDK. Required when the
+   * backend uses real DGA mToken mode.
+   * @example 12345678-1234-1234-1234-123456789012
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  appId?: string;
 }
 
 export class DgaOidcAuthorizeDto {
@@ -243,6 +253,10 @@ export class AuthTokenResponseDto {
   refreshToken!: string;
   /** Minimal identity for the client to render the session. */
   user!: AuthUserDto;
+  /** Whether this session supports a local logout action. */
+  canLogout!: boolean;
+  /** Lifetime of the refresh session in seconds. */
+  refreshTokenExpiresInSeconds!: number;
   /**
    * D5 (secondary path hint): when a Tang Rat login or register detects an email
    * match with a password account, this non-blocking suggestion is returned so the
@@ -274,6 +288,8 @@ export class MessageResponseDto {
 }
 
 export class LogoutResponseDto extends MessageResponseDto {
+  /** False when Tang Rat owns the mToken session lifecycle. */
+  logoutAllowed!: boolean;
   /**
    * Present only when the current session was created through DGA OIDC and the
    * backend has a provider `id_token` available. Frontend should redirect the

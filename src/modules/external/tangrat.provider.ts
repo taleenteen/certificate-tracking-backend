@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 export interface TangRatIdentity {
   sub: string;
@@ -9,7 +14,7 @@ export interface TangRatIdentity {
 }
 
 export interface TangRatProvider {
-  verify(mToken: string): Promise<TangRatIdentity>;
+  verify(mToken: string, appId?: string): Promise<TangRatIdentity>;
 }
 
 const identities: Record<string, TangRatIdentity> = {
@@ -90,3 +95,138 @@ export class MockTangRatProvider implements TangRatProvider {
     return Promise.resolve(identity);
   }
 }
+
+@Injectable()
+export class RealTangRatProvider implements TangRatProvider {
+  private readonly logger = new Logger(RealTangRatProvider.name);
+  private readonly consumerKey = process.env.DGA_MTOKEN_CONSUMER_KEY;
+  private readonly consumerSecret = process.env.DGA_MTOKEN_CONSUMER_SECRET;
+  private readonly registeredAppId = process.env.DGA_MTOKEN_APP_ID;
+  private readonly validateUrl =
+    process.env.DGA_MTOKEN_VALIDATE_URL ??
+    'https://api.egov.go.th/ws/auth/validate';
+  private readonly deprocUrl =
+    process.env.DGA_MTOKEN_DEPROC_URL ??
+    (process.env.DGA_MTOKEN_ENV === 'production'
+      ? 'https://api.egov.go.th/ws/dga/czp/prod/v1/core/shield/data/deproc'
+      : 'https://api.egov.go.th/ws/dga/czp/uat/v1/core/shield/data/deproc');
+
+  constructor() {
+    // Fail startup rather than accepting a live WebView login that can only
+    // fail later because the deployment is missing DGA credentials.
+    this.requireConfig(this.consumerKey, 'DGA_MTOKEN_CONSUMER_KEY');
+    this.requireConfig(this.consumerSecret, 'DGA_MTOKEN_CONSUMER_SECRET');
+    this.requireConfig(this.registeredAppId, 'DGA_MTOKEN_APP_ID');
+  }
+
+  async verify(mToken: string, appId?: string) {
+    const consumerKey = this.requireConfig(
+      this.consumerKey,
+      'DGA_MTOKEN_CONSUMER_KEY',
+    );
+    const consumerSecret = this.requireConfig(
+      this.consumerSecret,
+      'DGA_MTOKEN_CONSUMER_SECRET',
+    );
+    const registeredAppId = this.requireConfig(
+      this.registeredAppId,
+      'DGA_MTOKEN_APP_ID',
+    );
+
+    if (!appId || appId !== registeredAppId) {
+      throw new UnauthorizedException('Invalid mToken');
+    }
+
+    try {
+      const validateUrl = new URL(this.validateUrl);
+      validateUrl.searchParams.set('ConsumerSecret', consumerSecret);
+      validateUrl.searchParams.set('AgentID', mToken);
+
+      const validateResponse = await fetch(validateUrl, {
+        headers: {
+          'Consumer-Key': consumerKey,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!validateResponse.ok) {
+        this.logger.warn({
+          message: 'DGA mToken validation failed',
+          status: validateResponse.status,
+        });
+        throw new UnauthorizedException('Invalid mToken');
+      }
+
+      const validatePayload = (await validateResponse.json()) as {
+        Result?: string;
+        result?: string;
+      };
+      const accessToken = validatePayload.Result ?? validatePayload.result;
+      if (!accessToken) throw new UnauthorizedException('Invalid mToken');
+
+      const profileResponse = await fetch(this.deprocUrl, {
+        method: 'POST',
+        headers: {
+          'Consumer-Key': consumerKey,
+          Token: accessToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ appId, mToken }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!profileResponse.ok) {
+        this.logger.warn({
+          message: 'DGA mToken profile request failed',
+          status: profileResponse.status,
+        });
+        throw new UnauthorizedException('Invalid mToken');
+      }
+
+      const profilePayload = (await profileResponse.json()) as {
+        result?: DgaMTokenProfile;
+        Result?: DgaMTokenProfile;
+      };
+      const profile = profilePayload.result ?? profilePayload.Result;
+      const fullName = [profile?.firstName, profile?.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const subject =
+        profile?.czpUserId ?? profile?.userId ?? profile?.citizenId;
+      if (!profile || !subject || !fullName) {
+        throw new UnauthorizedException('Invalid mToken');
+      }
+
+      return {
+        sub: subject,
+        fullName,
+        email: profile.email,
+        phone: profile.mobile,
+        citizenId: profile.citizenId,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+
+      this.logger.error({
+        message: 'DGA mToken exchange unavailable',
+        error: error instanceof Error ? error.name : 'UnknownError',
+      });
+      throw new ServiceUnavailableException('Tang Rat service unavailable');
+    }
+  }
+
+  private requireConfig(value: string | undefined, name: string) {
+    if (!value) throw new Error(`${name} is required for real DGA mToken mode`);
+    return value;
+  }
+}
+
+type DgaMTokenProfile = {
+  userId?: string;
+  czpUserId?: string;
+  citizenId?: string;
+  firstName?: string;
+  lastName?: string;
+  mobile?: string;
+  email?: string;
+};

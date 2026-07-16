@@ -63,12 +63,17 @@ export class AuthController {
       'refreshToken' in result &&
       typeof result.refreshToken === 'string'
     ) {
+      const maxAgeSeconds =
+        'refreshTokenExpiresInSeconds' in result &&
+        typeof result.refreshTokenExpiresInSeconds === 'number'
+          ? result.refreshTokenExpiresInSeconds
+          : 7 * 24 * 60 * 60;
       response.cookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         path: '/api/auth',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: maxAgeSeconds * 1000,
       });
     }
     return result;
@@ -133,6 +138,7 @@ export class AuthController {
 
   @Public()
   @SkipAudit()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Login via ทางรัฐ mToken (PUBLIC / OFFICER)',
     description:
@@ -150,7 +156,11 @@ export class AuthController {
   ) {
     return this.setRefreshCookie(
       response,
-      await this.auth.tangRatLogin(dto.mToken, this.metadata(request)),
+      await this.auth.tangRatLogin(
+        dto.mToken,
+        this.metadata(request),
+        dto.appId,
+      ),
     );
   }
 
@@ -267,8 +277,8 @@ export class AuthController {
   @ApiOperation({
     summary: 'Logout',
     description:
-      'Revokes the current session. DGA OIDC sessions also return an ' +
-      '`endSessionUrl` that the frontend should redirect to for Digital ID logout.',
+      'Revokes the current session. mToken sessions are owned by Tang Rat and ' +
+      'return `logoutAllowed=false` without revoking the app-managed session.',
   })
   @ApiOkResponse({ type: LogoutResponseDto })
   @Post('logout')

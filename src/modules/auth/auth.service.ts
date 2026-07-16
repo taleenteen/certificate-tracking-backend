@@ -15,6 +15,7 @@ import {
   ClientType,
   JuristicRole,
   Prisma,
+  SessionAuthFlow,
   SystemUser,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -70,6 +71,26 @@ export class AuthService {
 
   private hash(value: string) {
     return createHash('sha256').update(value).digest('hex');
+  }
+
+  private resolveSessionAuthFlow(
+    authProvider: AuthProvider,
+    clientType: ClientType,
+    providerIdToken?: string,
+  ) {
+    if (authProvider === AuthProvider.tang_rat) {
+      return providerIdToken ? SessionAuthFlow.OIDC : SessionAuthFlow.MTOKEN;
+    }
+    return clientType === ClientType.web_admin
+      ? SessionAuthFlow.ADMIN_PORTAL
+      : SessionAuthFlow.PASSWORD;
+  }
+
+  private refreshLifetimeSeconds(authFlow: SessionAuthFlow) {
+    if (authFlow === SessionAuthFlow.MTOKEN) {
+      return Number(process.env.DGA_MTOKEN_SESSION_HOURS ?? 12) * 60 * 60;
+    }
+    return Number(process.env.REFRESH_TOKEN_DAYS ?? 7) * 24 * 60 * 60;
   }
 
   private providerTokenKey() {
@@ -279,29 +300,53 @@ export class AuthService {
     tangRatSub?: string,
     juristicCtx?: { juristicId: string; role: JuristicRole },
     providerIdToken?: string,
+    requestedAuthFlow?: SessionAuthFlow,
   ) {
     const refreshToken = randomBytes(64).toString('hex');
     const jti = randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setUTCDate(
-      expiresAt.getUTCDate() + Number(process.env.REFRESH_TOKEN_DAYS ?? 7),
+    const authFlow =
+      requestedAuthFlow ??
+      this.resolveSessionAuthFlow(authProvider, clientType, providerIdToken);
+    const refreshTokenExpiresInSeconds = this.refreshLifetimeSeconds(authFlow);
+    const expiresAt = new Date(
+      Date.now() + refreshTokenExpiresInSeconds * 1000,
     );
-    await this.prisma.userSession.create({
-      data: {
-        userId: user.id,
-        refreshTokenHash: this.hash(refreshToken),
-        accessTokenJti: jti,
-        authProvider,
-        clientType,
-        tangRatSub,
-        providerIdToken: providerIdToken
-          ? this.encryptProviderToken(providerIdToken)
-          : undefined,
-        activeJuristicId: juristicCtx?.juristicId ?? null,
-        ipAddress: metadata.ipAddress,
-        userAgent: metadata.userAgent,
-        expiresAt,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      if (
+        authFlow === SessionAuthFlow.MTOKEN &&
+        process.env.DGA_MTOKEN_SINGLE_SESSION !== 'false'
+      ) {
+        await tx.userSession.updateMany({
+          where: {
+            userId: user.id,
+            authFlow: SessionAuthFlow.MTOKEN,
+            isRevoked: false,
+          },
+          data: {
+            isRevoked: true,
+            revokedAt: new Date(),
+            revokeReason: 'MTOKEN_REPLACED',
+          },
+        });
+      }
+      await tx.userSession.create({
+        data: {
+          userId: user.id,
+          refreshTokenHash: this.hash(refreshToken),
+          accessTokenJti: jti,
+          authProvider,
+          clientType,
+          authFlow,
+          tangRatSub,
+          providerIdToken: providerIdToken
+            ? this.encryptProviderToken(providerIdToken)
+            : undefined,
+          activeJuristicId: juristicCtx?.juristicId ?? null,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+          expiresAt,
+        },
+      });
     });
     const claims = this.claimsFor(
       user,
@@ -319,6 +364,8 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
+      canLogout: authFlow !== SessionAuthFlow.MTOKEN,
+      refreshTokenExpiresInSeconds,
       user: {
         id: user.id,
         fullName: user.fullName,
@@ -570,12 +617,26 @@ export class AuthService {
     }
     const token = await this.dgaOidc.exchangeCode(dto.code, redirectUri);
     const identity = await this.dgaOidc.userInfo(token.accessToken);
-    return this.loginTangRatIdentity(identity, metadata, token.idToken);
+    return this.loginTangRatIdentity(
+      identity,
+      metadata,
+      token.idToken,
+      SessionAuthFlow.OIDC,
+    );
   }
 
-  async tangRatLogin(mToken: string, metadata: RequestMetadata) {
-    const identity = await this.tangRat.verify(mToken);
-    return this.loginTangRatIdentity(identity, metadata);
+  async tangRatLogin(
+    mToken: string,
+    metadata: RequestMetadata,
+    appId?: string,
+  ) {
+    const identity = await this.tangRat.verify(mToken, appId);
+    return this.loginTangRatIdentity(
+      identity,
+      metadata,
+      undefined,
+      SessionAuthFlow.MTOKEN,
+    );
   }
 
   private async loginTangRatIdentity(
@@ -588,6 +649,7 @@ export class AuthService {
     },
     metadata: RequestMetadata,
     providerIdToken?: string,
+    authFlow: SessionAuthFlow = SessionAuthFlow.MTOKEN,
   ) {
     // MOCK: replace in UAT. citizenId (if present) is Tang Rat-verified (primary per D5).
     const link = await this.prisma.authProviderLink.findUnique({
@@ -635,6 +697,7 @@ export class AuthService {
         identity.sub,
         undefined,
         providerIdToken,
+        authFlow,
       );
       await this.audit(link.user.id, 'LOGIN', metadata);
       return result;
@@ -673,6 +736,7 @@ export class AuthService {
             identity.sub,
             undefined,
             providerIdToken,
+            authFlow,
           );
           await this.audit(owner.id, 'LOGIN', metadata);
           return result;
@@ -733,6 +797,7 @@ export class AuthService {
       identity.sub,
       undefined,
       providerIdToken,
+      authFlow,
     );
     await this.audit(user.id, 'LOGIN', metadata);
     // Attach suggestion if present (back-compat: callers that only expect tokens still work; dto extended in phase).
@@ -877,6 +942,7 @@ export class AuthService {
       session.tangRatSub ?? undefined,
       juristicCtx,
       this.decryptProviderToken(session.providerIdToken),
+      session.authFlow,
     );
   }
 
@@ -886,8 +952,12 @@ export class AuthService {
       select: {
         authProvider: true,
         providerIdToken: true,
+        authFlow: true,
       },
     });
+    if (session?.authFlow === SessionAuthFlow.MTOKEN) {
+      return { success: true, logoutAllowed: false };
+    }
     await this.prisma.userSession.updateMany({
       where: { userId: user.sub, accessTokenJti: user.jti },
       data: {
@@ -904,7 +974,7 @@ export class AuthService {
             process.env.DGA_OIDC_LOGOUT_REDIRECT_URI,
           )
         : undefined;
-    return { success: true, endSessionUrl };
+    return { success: true, logoutAllowed: true, endSessionUrl };
   }
 
   async changePassword(user: JwtClaims, newPassword: string) {

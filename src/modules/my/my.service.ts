@@ -15,6 +15,7 @@ import {
   License,
   LicenseStatus,
   Prisma,
+  SessionAuthFlow,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { JwtClaims } from '../../common/auth.types';
@@ -1234,10 +1235,20 @@ export class MyService {
   // ───────────────────────── D5 (Tang Rat primary) profile & binding ─────────────────────────
 
   async getProfile(user: JwtClaims) {
-    const dbUser = await this.prisma.systemUser.findUnique({
-      where: { id: user.sub, deletedAt: null },
-      include: { providerLinks: true },
-    });
+    const [dbUser, activeSession] = await Promise.all([
+      this.prisma.systemUser.findUnique({
+        where: { id: user.sub, deletedAt: null },
+        include: { providerLinks: true },
+      }),
+      this.prisma.userSession.findFirst({
+        where: {
+          userId: user.sub,
+          accessTokenJti: user.jti,
+          isRevoked: false,
+        },
+        select: { authFlow: true },
+      }),
+    ]);
     if (!dbUser) throw new NotFoundException();
 
     const identities = dbUser.providerLinks
@@ -1263,6 +1274,7 @@ export class MyService {
       citizenIdVerified: !!dbUser.citizenId,
       citizenIdLast4: dbUser.citizenIdLast4 ?? undefined,
       primaryChannel: dbUser.primaryChannel,
+      canLogout: activeSession?.authFlow !== SessionAuthFlow.MTOKEN,
       identities,
       canAddPassword: !dbUser.passwordHash,
       canLinkTangRat: !dbUser.providerLinks.some(

@@ -129,6 +129,9 @@ export class ProfileResponseDto {
   /** Origin channel: "tang_rat" is primary for most users. */
   primaryChannel!: 'domain' | 'tang_rat';
 
+  /** Whether the current authenticated session supports local logout. */
+  canLogout!: boolean;
+
   /** List of linked identities (self and/or tang_rat). */
   identities!: IdentityDto[];
 

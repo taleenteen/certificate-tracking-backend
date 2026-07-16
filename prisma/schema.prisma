@@ -39,6 +39,13 @@ enum ClientType {
   web_admin
 }
 
+enum SessionAuthFlow {
+  PASSWORD
+  ADMIN_PORTAL
+  OIDC
+  MTOKEN
+}
+
 enum NotificationChannel {
   IN_APP
   LINE
@@ -212,6 +219,7 @@ model UserSession {
   accessTokenJti    String       @unique @default(uuid()) @map("access_token_jti") @db.Uuid
   authProvider      AuthProvider @map("auth_provider")
   clientType        ClientType   @default(app) @map("client_type")
+  authFlow          SessionAuthFlow @default(PASSWORD) @map("auth_flow")
   tangRatSub        String?      @map("tang_rat_sub") @db.VarChar(200)
   tangRatToken      String?      @map("tang_rat_token") @db.Text
   providerIdToken   String?      @map("provider_id_token") @db.Text
@@ -230,6 +238,7 @@ model UserSession {
   user SystemUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRevoked])
+  @@index([userId, authFlow, isRevoked])
   @@map("user_sessions")
 }
 

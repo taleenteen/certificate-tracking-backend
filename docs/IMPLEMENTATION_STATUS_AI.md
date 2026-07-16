@@ -14,6 +14,25 @@
 
 ## 0. Change Log
 
+- **2026-07-16 (mToken session logout visibility)** — The current session now
+  exposes `canLogout`: false only for mToken-created Tang Rat sessions and true
+  for OIDC or local sessions. Profile hydration persists this session-specific
+  flag, and the frontend hides the navbar Profile Logout action for mToken
+  sessions without changing account-level permissions or OIDC logout behavior.
+  Backend scoped lint/TypeScript and frontend TypeScript checks passed.
+
+- **2026-07-16 (configurable Tang Rat mToken landing flow)** — Added a real
+  server-side mToken provider for GDX Authentication plus Deproc profile lookup,
+  with registered-app-ID validation, 10-second timeouts, generic auth failures,
+  and no token/secret logging. `POST /api/auth/tang-rat` now accepts `appId` in
+  addition to the one-time mToken and reuses the existing verified Tang Rat
+  identity/session/audit path. The Next.js `/auth/dga` entry now selects mToken
+  SDK landing or the retained OIDC flow using `NEXT_PUBLIC_DGA_AUTH_FLOW`; the
+  backend independently selects mock/real mToken provider with
+  `DGA_MTOKEN_MODE`. Focused provider tests, scoped lint, and TypeScript checks
+  passed. Nest production build remains host-blocked by `EMFILE` file watcher
+  exhaustion.
+
 - **2026-07-15 (fixed desktop navigation rail)** — Changed the desktop sidebar
   from a scrolling layout item to a fixed, non-scrollable navigation rail and
   reserved its width in the shared shell. The sidebar now remains stationary as
@@ -40,6 +59,17 @@
   frontend: a role-aware sidebar, a wider shared application shell, two-column
   service/search heroes, and responsive grids for license and establishment
   results. Type-check and production frontend build passed.
+
+- **2026-07-16 (Tang Rat mToken WebView hardening)** — Added the approved
+  `SessionAuthFlow` migration and explicit `MTOKEN` sessions. mToken sessions
+  are short-lived (12 hours by default), replace prior mToken sessions for the
+  same user, cannot be logged out through the platform, and propagate their
+  exact cookie lifetime through the BFF. The Tang Rat landing route now skips
+  global session hydration, clears previous account caches before exchange,
+  waits only when the native SDK is needed, strips handoff query values from the
+  address bar, and serves no-store/no-referrer/noindex headers. The real DGA
+  provider fails fast for missing configuration and returns a controlled 503
+  when the upstream service is unavailable; OIDC remains selectable.
 
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
