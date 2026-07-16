@@ -82,6 +82,14 @@
   profile responses without printing mTokens, DGA access tokens, consumer
   credentials, or identity data.
 
+- **2026-07-16 (Tang Rat SDK v5 Universal)** — Replaced the v4 production-only
+  SDK integration with configurable v5 UAT/production loading. Added a typed
+  native bridge for platform detection, Tang Rat titles/back controls, native
+  QR scanning with browser-camera fallback, and native file save. Officer
+  document exports now accept `delivery: native`, preserve the existing audit
+  and immutable export record, and return a private 10-minute MinIO presigned
+  URL for the Tang Rat mobile app to download.
+
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
   an extra blank viewport on short pages. Mobile inputs/selects/textareas use

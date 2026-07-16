@@ -30,6 +30,12 @@ interface ExportFile {
   contentType: string;
 }
 
+interface CreatedExportFile extends ExportFile {
+  exportId: string;
+  referenceNo: string;
+  objectKey: string;
+}
+
 interface SourceDocument {
   id: string;
   docType: string;
@@ -97,7 +103,7 @@ export class LicenseDocumentExportService {
     user: JwtClaims,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<ExportFile> {
+  ): Promise<CreatedExportFile> {
     const source = await this.loadSource(businessId, dto.licenseIds);
     const referenceNo = this.referenceNo();
     const verificationCode = randomBytes(32).toString('hex');
@@ -155,7 +161,12 @@ export class LicenseDocumentExportService {
           },
         });
       });
-      return file;
+      return {
+        ...file,
+        exportId: exportRecord.id,
+        referenceNo,
+        objectKey,
+      };
     } catch (error) {
       this.logger.error(
         `License document export failed: ${exportRecord.id}`,
@@ -256,6 +267,10 @@ export class LicenseDocumentExportService {
       fileName: record.fileName,
       contentType: this.contentType(record.format),
     };
+  }
+
+  presign(objectKey: string) {
+    return this.storage.presign(objectKey);
   }
 
   async verify(verificationCode: string) {

@@ -23,6 +23,11 @@ export class CreateLicenseDocumentExportDto {
   @ArrayUnique()
   @IsUUID('4', { each: true })
   licenseIds!: string[];
+
+  /** Native Tang Rat clients receive a short-lived private download URL. */
+  @IsOptional()
+  @IsIn(['native'])
+  delivery?: 'native';
 }
 
 export class LicenseDocumentExportQueryDto extends PaginationDto {

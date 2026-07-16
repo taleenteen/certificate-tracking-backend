@@ -11,6 +11,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -57,6 +58,10 @@ export class LicenseDocumentExportController {
     'text/csv',
   )
   @ApiOkResponse({ description: 'Binary file attachment.' })
+  @ApiCreatedResponse({
+    description:
+      'Native Tang Rat delivery returns a private, 10-minute download URL.',
+  })
   @ApiForbiddenResponse({
     description: 'Officer cannot export the selected licenses.',
   })
@@ -81,6 +86,16 @@ export class LicenseDocumentExportController {
       request.ip,
       request.headers['user-agent'],
     );
+    if (dto.delivery === 'native') {
+      return response.status(201).json({
+        id: file.exportId,
+        referenceNo: file.referenceNo,
+        fileName: file.fileName,
+        contentType: file.contentType,
+        downloadUrl: await this.exports.presign(file.objectKey),
+        downloadUrlExpiresInSeconds: 600,
+      });
+    }
     response.type(file.contentType).attachment(file.fileName).send(file.buffer);
   }
 
