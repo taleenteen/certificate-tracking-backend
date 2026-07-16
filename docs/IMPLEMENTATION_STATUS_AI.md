@@ -97,6 +97,11 @@
   whether the Tang Rat SDK accepted the save request; tokens and presigned URL
   query signatures are never displayed or logged.
 
+- **2026-07-16 (production frontend build runtime)** — The production compose
+  frontend image still installs from `bun.lock`, but runs Next.js/Turbopack
+  builds under Node 22. This avoids a Bun 1.3.14 segmentation fault observed
+  after successful compilation while Turbopack collected page data on Ubuntu.
+
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
   an extra blank viewport on short pages. Mobile inputs/selects/textareas use
