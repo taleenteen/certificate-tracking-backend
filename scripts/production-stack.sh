@@ -22,6 +22,12 @@ case "${1:-up}" in
   up)
     compose up -d --build
     ;;
+  frontend-up)
+    # Rebuild/recreate only the Next.js container. Backend, PostgreSQL, and
+    # MinIO remain running; the frontend continues to use the existing backend
+    # service over the Docker network.
+    compose up -d --build --no-deps frontend
+    ;;
   verify)
     compose ps
     echo
@@ -61,7 +67,7 @@ case "${1:-up}" in
     compose down -v
     ;;
   *)
-    echo "Usage: sh scripts/production-stack.sh [up|verify|logs|down|reset]" >&2
+    echo "Usage: sh scripts/production-stack.sh [up|frontend-up|verify|logs|down|reset]" >&2
     exit 1
     ;;
 esac

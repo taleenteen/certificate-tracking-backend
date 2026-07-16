@@ -71,6 +71,11 @@
   provider fails fast for missing configuration and returns a controlled 503
   when the upstream service is unavailable; OIDC remains selectable.
 
+- **2026-07-16 (frontend-only prototype deploy)** — Added
+  `sh scripts/production-stack.sh frontend-up`, which rebuilds and recreates
+  only the Next.js container with `--no-deps`; it does not start or restart the
+  backend, PostgreSQL, or MinIO services.
+
 - **2026-07-12 (mobile viewport and identity normalization)** — AppShell page
   minimum heights now account for the mobile navbar using `100dvh`, preventing
   an extra blank viewport on short pages. Mobile inputs/selects/textareas use
