@@ -99,6 +99,14 @@ export class MockTangRatProvider implements TangRatProvider {
 @Injectable()
 export class RealTangRatProvider implements TangRatProvider {
   private readonly logger = new Logger(RealTangRatProvider.name);
+  private readonly requestTimeoutMs = this.timeoutFromEnv(
+    'DGA_MTOKEN_REQUEST_TIMEOUT_MS',
+    7_000,
+  );
+  private readonly totalTimeoutMs = this.timeoutFromEnv(
+    'DGA_MTOKEN_TOTAL_TIMEOUT_MS',
+    15_000,
+  );
   private readonly consumerKey = process.env.DGA_MTOKEN_CONSUMER_KEY;
   private readonly consumerSecret = process.env.DGA_MTOKEN_CONSUMER_SECRET;
   private readonly registeredAppId = process.env.DGA_MTOKEN_APP_ID;
@@ -120,6 +128,7 @@ export class RealTangRatProvider implements TangRatProvider {
   }
 
   async verify(mToken: string, appId?: string) {
+    const startedAt = Date.now();
     const consumerKey = this.requireConfig(
       this.consumerKey,
       'DGA_MTOKEN_CONSUMER_KEY',
@@ -142,21 +151,28 @@ export class RealTangRatProvider implements TangRatProvider {
     }
 
     try {
+      const totalDeadline = AbortSignal.timeout(this.totalTimeoutMs);
       const validateUrl = new URL(this.validateUrl);
       validateUrl.searchParams.set('ConsumerSecret', consumerSecret);
       validateUrl.searchParams.set('AgentID', mToken);
 
+      const validateStartedAt = Date.now();
       const validateResponse = await fetch(validateUrl, {
         headers: {
           'Consumer-Key': consumerKey,
           'Content-Type': 'application/json',
         },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.any([
+          totalDeadline,
+          AbortSignal.timeout(this.requestTimeoutMs),
+        ]),
       });
       if (!validateResponse.ok) {
         this.logger.warn({
           message: 'DGA mToken validation failed',
           status: validateResponse.status,
+          durationMs: Date.now() - validateStartedAt,
+          totalDurationMs: Date.now() - startedAt,
         });
         throw new UnauthorizedException('Invalid mToken');
       }
@@ -169,10 +185,17 @@ export class RealTangRatProvider implements TangRatProvider {
       if (!accessToken) {
         this.logger.warn({
           message: 'DGA mToken validation returned no token',
+          durationMs: Date.now() - validateStartedAt,
+          totalDurationMs: Date.now() - startedAt,
         });
         throw new UnauthorizedException('Invalid mToken');
       }
+      this.logger.log({
+        message: 'DGA mToken validation completed',
+        durationMs: Date.now() - validateStartedAt,
+      });
 
+      const profileStartedAt = Date.now();
       const profileResponse = await fetch(this.deprocUrl, {
         method: 'POST',
         headers: {
@@ -181,12 +204,17 @@ export class RealTangRatProvider implements TangRatProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ appId, mToken }),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.any([
+          totalDeadline,
+          AbortSignal.timeout(this.requestTimeoutMs),
+        ]),
       });
       if (!profileResponse.ok) {
         this.logger.warn({
           message: 'DGA mToken profile request failed',
           status: profileResponse.status,
+          durationMs: Date.now() - profileStartedAt,
+          totalDurationMs: Date.now() - startedAt,
         });
         throw new UnauthorizedException('Invalid mToken');
       }
@@ -208,9 +236,16 @@ export class RealTangRatProvider implements TangRatProvider {
           hasProfile: Boolean(profile),
           hasSubject: Boolean(subject),
           hasFullName: Boolean(fullName),
+          durationMs: Date.now() - profileStartedAt,
+          totalDurationMs: Date.now() - startedAt,
         });
         throw new UnauthorizedException('Invalid mToken');
       }
+      this.logger.log({
+        message: 'DGA mToken profile completed',
+        durationMs: Date.now() - profileStartedAt,
+        totalDurationMs: Date.now() - startedAt,
+      });
 
       return {
         sub: subject,
@@ -225,6 +260,7 @@ export class RealTangRatProvider implements TangRatProvider {
       this.logger.error({
         message: 'DGA mToken exchange unavailable',
         error: error instanceof Error ? error.name : 'UnknownError',
+        totalDurationMs: Date.now() - startedAt,
       });
       throw new ServiceUnavailableException('Tang Rat service unavailable');
     }
@@ -233,6 +269,11 @@ export class RealTangRatProvider implements TangRatProvider {
   private requireConfig(value: string | undefined, name: string) {
     if (!value) throw new Error(`${name} is required for real DGA mToken mode`);
     return value;
+  }
+
+  private timeoutFromEnv(name: string, fallback: number) {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) && value >= 1_000 ? value : fallback;
   }
 
   private redactAppId(appId: string | undefined) {

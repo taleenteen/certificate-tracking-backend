@@ -14,6 +14,14 @@
 
 ## 0. Change Log
 
+- **2026-07-17 (mToken performance bounds and timing)** — Real Tang Rat mToken
+  validation now uses configurable 7-second per-call and 15-second total
+  exchange deadlines, with safe duration logs for validate/profile/total stages.
+  This prevents two serial 10-second upstream waits from keeping a mobile login
+  pending for roughly 20 seconds. No identity tokens, credentials, or personal
+  data are included in the timing logs. The focused real-provider stub test and
+  scoped lint/TypeScript checks passed; physical UAT timing remains pending.
+
 - **2026-07-16 (mToken session logout visibility)** — The current session now
   exposes `canLogout`: false only for mToken-created Tang Rat sessions and true
   for OIDC or local sessions. Profile hydration persists this session-specific
