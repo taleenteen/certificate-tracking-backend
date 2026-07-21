@@ -18,7 +18,9 @@ import { Pool } from 'pg';
 
 const targetUsername = 'public-owner';
 const fixtureRegistrationId = 'MOCKPUBOWNER5LIC';
-const fixtureBusinessName = 'สถานประกอบการตัวอย่าง 5 ใบอนุญาต';
+const fixtureCompanyName = 'บริษัท กรีนฮาร์เวสต์ อะกริ-อินดัสทรี จำกัด';
+const fixtureBusinessName = 'โรงงานแปรรูปและส่งออกกรีนฮาร์เวสต์';
+const legacyFixtureBusinessName = 'สถานประกอบการตัวอย่าง 5 ใบอนุญาต';
 const shouldApply = process.argv.includes('--apply');
 
 const fixtureLicenses = [
@@ -123,14 +125,14 @@ async function main() {
       where: { registrationId: fixtureRegistrationId },
       create: {
         registrationId: fixtureRegistrationId,
-        nameTh: 'บริษัท ตัวอย่างใบอนุญาตห้าประเภท จำกัด',
-        nameEn: 'Five License Types Demo Company Co., Ltd.',
+        nameTh: fixtureCompanyName,
+        nameEn: 'Green Harvest Agri-Industry Co., Ltd.',
         juristicType: 'บริษัทจำกัด',
         address: '999 ถนนตัวอย่าง แขวงพระโขนง เขตวัฒนา กรุงเทพมหานคร 10110',
       },
       update: {
-        nameTh: 'บริษัท ตัวอย่างใบอนุญาตห้าประเภท จำกัด',
-        nameEn: 'Five License Types Demo Company Co., Ltd.',
+        nameTh: fixtureCompanyName,
+        nameEn: 'Green Harvest Agri-Industry Co., Ltd.',
         juristicType: 'บริษัทจำกัด',
         address: '999 ถนนตัวอย่าง แขวงพระโขนง เขตวัฒนา กรุงเทพมหานคร 10110',
       },
@@ -160,7 +162,7 @@ async function main() {
     const existingBusiness = await tx.business.findFirst({
       where: {
         juristicPersonId: juristicPerson.id,
-        nameTh: fixtureBusinessName,
+        nameTh: { in: [fixtureBusinessName, legacyFixtureBusinessName] },
         deletedAt: null,
       },
       select: { id: true },
@@ -168,7 +170,7 @@ async function main() {
     const business = existingBusiness
       ? await tx.business.update({
           where: { id: existingBusiness.id },
-          data: { ownerUserId: user.id },
+          data: { nameTh: fixtureBusinessName, ownerUserId: user.id },
         })
       : await tx.business.create({
           data: {
