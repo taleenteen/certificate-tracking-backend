@@ -33,6 +33,7 @@ COPY --from=build --chown=app:app /usr/src/app/node_modules ./node_modules
 COPY --from=build --chown=app:app /usr/src/app/dist ./dist
 COPY --from=build --chown=app:app /usr/src/app/prisma ./prisma
 COPY --from=build --chown=app:app /usr/src/app/src ./src
+COPY --from=build --chown=app:app /usr/src/app/scripts ./scripts
 COPY --from=build --chown=app:app /usr/src/app/package.json ./package.json
 COPY --from=build --chown=app:app /usr/src/app/prisma.config.ts ./prisma.config.ts
 COPY --from=build --chown=app:app /usr/src/app/tsconfig.json ./tsconfig.json

@@ -1,0 +1,188 @@
+{
+  "main": {
+    "id": "1caa76bcaccf179c",
+    "type": "split",
+    "children": [
+      {
+        "id": "05f0c1bd28cad706",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "be49e4f90daea67e",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "7362bde92d39fc43",
+    "type": "split",
+    "children": [
+      {
+        "id": "39371810a75d9f22",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f67e915e605a088b",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "b2a8cc94f7f92091",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "554f05f00484db88",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "b033d8f253f0720f",
+    "type": "split",
+    "children": [
+      {
+        "id": "cf9d0a82ae3e9d0c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "50e6df65788e58c7",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE"
+            }
+          },
+          {
+            "id": "417252346ffa3d65",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE"
+            }
+          },
+          {
+            "id": "4eccc3b531b08235",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "693ac18de1f84726",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "4fed9d5d20be6c37",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of RUNBOOK_PUBLIC_OWNER_FIVE_LICENSE_FIXTURE"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "be49e4f90daea67e",
+  "lastOpenFiles": []
+}

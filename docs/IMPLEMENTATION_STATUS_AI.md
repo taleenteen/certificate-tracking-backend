@@ -14,6 +14,20 @@
 
 ## 0. Change Log
 
+- **2026-07-21 (public-owner five-license fixture)** — Added an idempotent
+  operator script and Ubuntu runbook for a dedicated mock juristic company,
+  one owned business, and document-linked `RNG4`, `HAZMAT`, `ACFS_PRODUCER`,
+  `ACFS_EXPORTER`, and `ACFS_IMPORTER` licenses under the seeded
+  `public-owner` account. The script is dry-run by default, never calls the
+  destructive Prisma seed, reuses the existing curated certificate objects,
+  requires both `--apply` and an explicit production confirmation variable
+  before writing, and is copied into the production backend image. TypeScript,
+  file-scoped ESLint, dry-run, and diff checks passed. Local Nest build remains
+  blocked by the host `EMFILE` file-watcher limit, not a TypeScript compile
+  error. The fixture is visible through public name/license search and e-Map;
+  `production-stack.sh fixture-public-owner-five-licenses` provides the
+  one-command in-container apply path after deployment.
+
 - **2026-07-17 (mToken performance bounds and timing)** — Real Tang Rat mToken
   validation now uses configurable 7-second per-call and 15-second total
   exchange deadlines, with safe duration logs for validate/profile/total stages.

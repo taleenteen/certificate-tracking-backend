@@ -28,6 +28,15 @@ case "${1:-up}" in
     # service over the Docker network.
     compose up -d --build --no-deps frontend
     ;;
+  fixture-public-owner-five-licenses)
+    # Rebuild only the backend so the current release's fixture script is
+    # present, without restarting the frontend or resetting persistent data.
+    compose up -d --build --no-deps backend
+    compose exec -T \
+      -e NODE_ENV=production \
+      -e CONFIRM_PUBLIC_OWNER_FIXTURE=true \
+      backend npm run fixture:public-owner-five-licenses -- --apply
+    ;;
   verify)
     compose ps
     echo
@@ -67,7 +76,7 @@ case "${1:-up}" in
     compose down -v
     ;;
   *)
-    echo "Usage: sh scripts/production-stack.sh [up|frontend-up|verify|logs|down|reset]" >&2
+    echo "Usage: sh scripts/production-stack.sh [up|frontend-up|fixture-public-owner-five-licenses|verify|logs|down|reset]" >&2
     exit 1
     ;;
 esac
