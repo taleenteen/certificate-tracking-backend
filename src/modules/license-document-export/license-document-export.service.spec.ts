@@ -116,6 +116,69 @@ describe('LicenseDocumentExportService', () => {
     expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 
+  it('accepts selected licenses from multiple agencies under one business', async () => {
+    const issueDate = new Date('2026-01-01T00:00:00.000Z');
+    prisma.business.findFirst.mockResolvedValue({
+      id: 'b1111111-1111-4111-8111-111111111111',
+      nameTh: 'สถานประกอบการทดสอบ',
+      address: 'กรุงเทพมหานคร',
+      province: 'กรุงเทพมหานคร',
+      phone: '020000000',
+      ownerUserId: null,
+      juristicPersonId: null,
+    });
+    prisma.license.findMany.mockResolvedValue([
+      {
+        id: 'a1111111-1111-4111-8111-111111111111',
+        licenseNo: 'RNG4-00001',
+        status: 'ACTIVE',
+        issueDate,
+        expireDate: null,
+        licenseType: {
+          id: 'c1111111-1111-4111-8111-111111111111',
+          code: 'RNG4',
+          nameTh: 'ใบอนุญาต ร.ง.4',
+          agencyId: 'd1111111-1111-4111-8111-111111111111',
+          agency: {
+            id: 'd1111111-1111-4111-8111-111111111111',
+            code: 'DIW',
+            nameTh: 'กรมโรงงานอุตสาหกรรม',
+          },
+        },
+        documents: [],
+      },
+      {
+        id: 'a2222222-1111-4111-8111-111111111111',
+        licenseNo: 'ACFS-00001',
+        status: 'ACTIVE',
+        issueDate,
+        expireDate: new Date('2027-01-01T00:00:00.000Z'),
+        licenseType: {
+          id: 'c2222222-1111-4111-8111-111111111111',
+          code: 'ACFS_PRODUCER',
+          nameTh: 'ใบอนุญาตผู้ผลิตสินค้าเกษตร',
+          agencyId: 'd2222222-1111-4111-8111-111111111111',
+          agency: {
+            id: 'd2222222-1111-4111-8111-111111111111',
+            code: 'ACFS',
+            nameTh: 'สำนักงานมาตรฐานสินค้าเกษตรและอาหารแห่งชาติ',
+          },
+        },
+        documents: [],
+      },
+    ]);
+
+    await expect(
+      service['loadSource']('b1111111-1111-4111-8111-111111111111', [
+        'a1111111-1111-4111-8111-111111111111',
+        'a2222222-1111-4111-8111-111111111111',
+      ]),
+    ).resolves.toMatchObject({
+      licenses: [{ licenseNo: 'RNG4-00001' }, { licenseNo: 'ACFS-00001' }],
+      agencies: [{ code: 'ACFS' }, { code: 'DIW' }],
+    });
+  });
+
   it('returns only public-safe snapshot fields for a valid verification code', async () => {
     prisma.licenseDocumentExport.findFirst.mockResolvedValue({
       referenceNo: 'LEX-20260711-AB12CD34',

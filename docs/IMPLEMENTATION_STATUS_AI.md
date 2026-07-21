@@ -14,6 +14,16 @@
 
 ## 0. Change Log
 
+- **2026-07-21 (multi-agency document export)** — Officers can now select every
+  non-deleted license under one business for a single PDF/XLSX/CSV export,
+  including licenses across agencies. Removed matching frontend and backend
+  single-agency gates while retaining the server-side one-business validation.
+  The immutable snapshot and generated files record each license's agency; the
+  existing required export `agencyId` stores a deterministic primary agency for
+  legacy indexing only. Focused DIW+ACFS unit test, backend lint, TypeScript,
+  and Nest build passed; frontend TypeScript, focused lint, and production build
+  artifacts passed. Physical export validation remains pending.
+
 - **2026-07-21 (public-owner five-license fixture)** — Added an idempotent
   operator script and Ubuntu runbook for a dedicated mock juristic company,
   one owned business, and document-linked `RNG4`, `HAZMAT`, `ACFS_PRODUCER`,

@@ -76,7 +76,7 @@ interface ExportSource {
     juristicRegistrationId: string | null;
   };
   licenses: SourceLicense[];
-  agency: { id: string; code: string; nameTh: string };
+  agencies: Array<{ id: string; code: string; nameTh: string }>;
 }
 
 const FONT_MAGIC_HEADERS = ['00010000', '4f54544f', '74746366', '74727565'];
@@ -116,7 +116,9 @@ export class LicenseDocumentExportService {
         verificationCode,
         businessId,
         exportedByUserId: user.sub,
-        agencyId: source.agency.id,
+        // DECISION: this legacy, required column remains a single-agency index.
+        // The immutable snapshot and generated file carry every selected agency.
+        agencyId: source.agencies[0].id,
         format,
         contentSnapshot: snapshot,
         items: {
@@ -377,15 +379,14 @@ export class LicenseDocumentExportService {
 
     const byId = new Map(licenses.map((license) => [license.id, license]));
     const ordered = licenseIds.map((id) => byId.get(id)!);
-    const agencyIds = new Set(
-      ordered.map((license) => license.licenseType.agencyId),
-    );
-    if (agencyIds.size !== 1) {
-      throw new UnprocessableEntityException(
-        'Selected licenses must belong to one agency',
-      );
-    }
-    const agency = ordered[0].licenseType.agency;
+    const agencies = Array.from(
+      new Map(
+        ordered.map((license) => [
+          license.licenseType.agency.id,
+          license.licenseType.agency,
+        ]),
+      ).values(),
+    ).sort((left, right) => left.code.localeCompare(right.code));
 
     const documents = ordered.flatMap((license) => license.documents);
     if (documents.length > MAX_SOURCE_DOCUMENTS) {
@@ -408,7 +409,7 @@ export class LicenseDocumentExportService {
         juristicRegistrationId: business.juristicPerson?.registrationId ?? null,
       },
       licenses: ordered,
-      agency,
+      agencies,
     };
   }
 
@@ -426,7 +427,7 @@ export class LicenseDocumentExportService {
         ownerName: source.business.juristicName ?? source.business.ownerName,
         juristicRegistrationId: source.business.juristicRegistrationId,
       },
-      agency: source.agency,
+      agencies: source.agencies,
       licenses: source.licenses.map((license) => ({
         id: license.id,
         licenseNo: license.licenseNo,
@@ -580,7 +581,7 @@ export class LicenseDocumentExportService {
     coverY = drawSection('ขอบเขตรายงาน', coverY + 18);
     drawField(
       'ใบอนุญาตที่แนบ',
-      `${source.licenses.length} รายการ จาก ${source.agency.nameTh} (${source.agency.code})`,
+      `${source.licenses.length} รายการ จาก ${this.agencyLabel(source.agencies)}`,
       coverY,
     );
 
@@ -683,7 +684,7 @@ export class LicenseDocumentExportService {
           address: source.business.address,
           province: source.business.province,
           phone: source.business.phone ?? '',
-          agency: source.agency.nameTh,
+          agencies: this.agencyLabel(source.agencies),
         },
       ]),
       'สถานประกอบการ',
@@ -695,6 +696,8 @@ export class LicenseDocumentExportService {
           licenseNo: license.licenseNo,
           licenseTypeCode: license.licenseType.code,
           licenseTypeName: license.licenseType.nameTh,
+          agencyCode: license.licenseType.agency.code,
+          agencyName: license.licenseType.agency.nameTh,
           status: license.status,
           issueDate: license.issueDate.toISOString().slice(0, 10),
           expireDate: license.expireDate?.toISOString().slice(0, 10) ?? '',
@@ -737,7 +740,7 @@ export class LicenseDocumentExportService {
         sourcePlatform: 'E_LICENSE',
         businessName: source.business.nameTh,
         province: source.business.province,
-        agency: source.agency.nameTh,
+        agency: license.licenseType.agency.nameTh,
         licenseNo: license.licenseNo,
         licenseTypeCode: license.licenseType.code,
         licenseTypeName: license.licenseType.nameTh,
@@ -773,6 +776,12 @@ export class LicenseDocumentExportService {
   private referenceNo() {
     const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
     return `LEX-${date}-${randomBytes(4).toString('hex').toUpperCase()}`;
+  }
+
+  private agencyLabel(agencies: Array<{ code: string; nameTh: string }>) {
+    return agencies
+      .map((agency) => `${agency.nameTh} (${agency.code})`)
+      .join(', ');
   }
 
   private reportDate(value: Date) {
